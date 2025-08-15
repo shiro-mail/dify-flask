@@ -7,8 +7,48 @@ onDOMReady(() => {
     const resultContent = document.getElementById('resultContent');
     const errorContent = document.getElementById('errorContent');
     
+    const fileUploadArea = document.querySelector('.file-upload-area');
+    if (fileUploadArea && fileInput) {
+        fileUploadArea.addEventListener('click', () => {
+            fileInput.click();
+        });
+        
+        fileUploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            fileUploadArea.classList.add('dragover');
+        });
+        
+        fileUploadArea.addEventListener('dragleave', (e) => {
+            e.preventDefault();
+            fileUploadArea.classList.remove('dragover');
+        });
+        
+        fileUploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            fileUploadArea.classList.remove('dragover');
+            
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                const pngFiles = Array.from(files).filter(file => isValidPNGFile(file));
+                
+                if (pngFiles.length > 0) {
+                    const dt = new DataTransfer();
+                    pngFiles.forEach(file => dt.items.add(file));
+                    fileInput.files = dt.files;
+                    
+                    const event = new Event('change', { bubbles: true });
+                    fileInput.dispatchEvent(event);
+                } else {
+                    showMessage('PNGファイルのみ対応しています', 'error');
+                }
+            }
+        });
+    } else {
+        console.error('File upload area or file input not found');
+    }
+    
     if (!uploadForm || !fileInput || !analyzeBtn) {
-        console.error('Required elements not found');
+        console.error('Required form elements not found');
         return;
     }
     
@@ -136,43 +176,6 @@ onDOMReady(() => {
         hideElement(resultArea);
     }
     
-    const fileUploadArea = document.querySelector('.file-upload-area');
-    if (fileUploadArea) {
-        fileUploadArea.addEventListener('click', () => {
-            fileInput.click();
-        });
-        
-        fileUploadArea.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            fileUploadArea.classList.add('dragover');
-        });
-        
-        fileUploadArea.addEventListener('dragleave', (e) => {
-            e.preventDefault();
-            fileUploadArea.classList.remove('dragover');
-        });
-        
-        fileUploadArea.addEventListener('drop', (e) => {
-            e.preventDefault();
-            fileUploadArea.classList.remove('dragover');
-            
-            const files = e.dataTransfer.files;
-            if (files.length > 0) {
-                const pngFiles = Array.from(files).filter(file => isValidPNGFile(file));
-                
-                if (pngFiles.length > 0) {
-                    const dt = new DataTransfer();
-                    pngFiles.forEach(file => dt.items.add(file));
-                    fileInput.files = dt.files;
-                    
-                    const event = new Event('change', { bubbles: true });
-                    fileInput.dispatchEvent(event);
-                } else {
-                    showMessage('PNGファイルのみ対応しています', 'error');
-                }
-            }
-        });
-    }
     
     async function startSequentialProcessing(validFiles) {
         const formData = new FormData();
