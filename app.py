@@ -212,11 +212,11 @@ def send_to_dify(file_obj, filename):
         
         workflow_payload = {
             "inputs": {
-                "input_file": {
+                "input_file": [{
                     "type": "image",
                     "transfer_method": "local_file", 
                     "upload_file_id": file_id
-                }
+                }]
             },
             "response_mode": "blocking",
             "user": "dify-flask-app"
