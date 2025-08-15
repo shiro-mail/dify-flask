@@ -48,6 +48,61 @@ def analyze_image():
     except Exception as e:
         return jsonify({'error': f'エラーが発生しました: {str(e)}'}), 500
 
+@app.route('/api/dify/analyze-multiple', methods=['POST'])
+def analyze_multiple_images():
+    try:
+        files = request.files.getlist('files')
+        if not files or len(files) == 0:
+            return jsonify({'error': 'ファイルが選択されていません'}), 400
+        
+        results = []
+        errors = []
+        
+        for file in files:
+            if file.filename == '':
+                continue
+                
+            if not file.filename.lower().endswith('.png'):
+                errors.append(f'{file.filename}: PNGファイルのみ対応しています')
+                continue
+            
+            filename = secure_filename(file.filename)
+            
+            try:
+                file.seek(0)
+                dify_response = send_to_dify(file, filename)
+                
+                if 'error' in dify_response:
+                    errors.append(f'{filename}: {dify_response["error"]}')
+                else:
+                    results.append({
+                        'filename': filename,
+                        'result': dify_response
+                    })
+            except Exception as e:
+                errors.append(f'{filename}: {str(e)}')
+        
+        if len(results) == 0:
+            return jsonify({
+                'error': '有効な分析結果がありません',
+                'errors': errors
+            }), 500
+        
+        response_data = {
+            'success': True,
+            'results': results,
+            'processed_count': len(results),
+            'total_count': len(files)
+        }
+        
+        if errors:
+            response_data['errors'] = errors
+            
+        return jsonify(response_data)
+            
+    except Exception as e:
+        return jsonify({'error': f'エラーが発生しました: {str(e)}'}), 500
+
 def send_to_dify(file_obj, filename):
     """Send file to Dify API using two-step process: upload then workflow execution"""
     try:

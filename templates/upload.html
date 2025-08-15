@@ -11,13 +11,13 @@
             <div class="card-body">
                 <form id="uploadForm" enctype="multipart/form-data">
                     <div class="mb-4">
-                        <label for="fileInput" class="form-label">PNG画像を選択してください</label>
+                        <label for="fileInput" class="form-label">PNG画像を選択してください（複数選択可能）</label>
                         <div class="file-upload-area">
                             <div class="upload-icon">📁</div>
                             <p class="mb-2">クリックまたはドラッグ&ドロップでファイルを選択</p>
-                            <p class="text-muted small">対応形式: PNG画像のみ（最大16MB）</p>
+                            <p class="text-muted small">対応形式: PNG画像のみ（各ファイル最大16MB、複数選択可能）</p>
                         </div>
-                        <input type="file" class="form-control d-none" id="fileInput" name="file" accept=".png" required>
+                        <input type="file" class="form-control d-none" id="fileInput" name="files" accept=".png" multiple required>
                     </div>
                     
                     <div class="text-center">
