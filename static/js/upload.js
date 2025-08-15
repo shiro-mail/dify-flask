@@ -13,35 +13,55 @@ onDOMReady(() => {
     }
     
     fileInput.addEventListener('change', (e) => {
-        const file = e.target.files[0];
-        if (file) {
-            if (!isValidPNGFile(file)) {
-                showMessage('PNGファイルのみ対応しています', 'error');
+        const files = e.target.files;
+        if (files.length > 0) {
+            let validFiles = 0;
+            let totalSize = 0;
+            
+            for (let i = 0; i < files.length; i++) {
+                const file = files[i];
+                if (!isValidPNGFile(file)) {
+                    showMessage(`${file.name} はPNGファイルではありません`, 'error');
+                    continue;
+                }
+                
+                if (file.size > 16 * 1024 * 1024) {
+                    showMessage(`${file.name} のファイルサイズが16MBを超えています`, 'error');
+                    continue;
+                }
+                
+                validFiles++;
+                totalSize += file.size;
+            }
+            
+            if (validFiles === 0) {
                 fileInput.value = '';
                 return;
             }
             
-            if (file.size > 16 * 1024 * 1024) {
-                showMessage('ファイルサイズは16MB以下にしてください', 'error');
-                fileInput.value = '';
-                return;
-            }
-            
-            showMessage(`ファイル選択: ${file.name} (${formatFileSize(file.size)})`, 'success');
+            showMessage(`${validFiles}個のファイルを選択 (合計: ${formatFileSize(totalSize)})`, 'success');
         }
     });
     
     uploadForm.addEventListener('submit', async (e) => {
         e.preventDefault();
         
-        const file = fileInput.files[0];
-        if (!file) {
+        const files = fileInput.files;
+        if (files.length === 0) {
             showMessage('PNGファイルを選択してください', 'error');
             return;
         }
         
-        if (!isValidPNGFile(file)) {
-            showMessage('PNGファイルのみ対応しています', 'error');
+        const validFiles = [];
+        for (let i = 0; i < files.length; i++) {
+            const file = files[i];
+            if (isValidPNGFile(file) && file.size <= 16 * 1024 * 1024) {
+                validFiles.push(file);
+            }
+        }
+        
+        if (validFiles.length === 0) {
+            showMessage('有効なPNGファイルがありません', 'error');
             return;
         }
         
@@ -49,13 +69,15 @@ onDOMReady(() => {
         hideElement(errorArea);
         
         const formData = new FormData();
-        formData.append('file', file);
+        for (let i = 0; i < validFiles.length; i++) {
+            formData.append('files', validFiles[i]);
+        }
         
         try {
             setButtonLoading(analyzeBtn, true);
-            showMessage('画像をDifyで分析中...', 'info');
+            showMessage(`${validFiles.length}個の画像をDifyで分析中...`, 'info');
             
-            const response = await fetch('/api/dify/analyze', {
+            const response = await fetch('/api/dify/analyze-multiple', {
                 method: 'POST',
                 body: formData
             });
@@ -64,7 +86,7 @@ onDOMReady(() => {
             
             if (response.ok && result.success) {
                 showMessage('分析が完了しました！', 'success');
-                displayResult(result.result);
+                displayResult(result.results);
             } else {
                 const errorMessage = result.error || '分析に失敗しました';
                 showMessage(errorMessage, 'error');
@@ -80,12 +102,21 @@ onDOMReady(() => {
         }
     });
     
-    function displayResult(result) {
+    function displayResult(results) {
         if (resultContent) {
-            if (typeof result === 'object') {
-                resultContent.innerHTML = `<pre>${formatJSON(result)}</pre>`;
+            if (Array.isArray(results)) {
+                let html = '';
+                results.forEach((item, index) => {
+                    html += `<div class="mb-3">`;
+                    html += `<h6>ファイル ${index + 1}: ${item.filename}</h6>`;
+                    html += `<pre class="result-content">${formatJSON(item.result)}</pre>`;
+                    html += `</div>`;
+                });
+                resultContent.innerHTML = html;
+            } else if (typeof results === 'object') {
+                resultContent.innerHTML = `<pre class="result-content">${formatJSON(results)}</pre>`;
             } else {
-                resultContent.textContent = result;
+                resultContent.textContent = results;
             }
         }
         showElement(resultArea);
@@ -122,9 +153,13 @@ onDOMReady(() => {
             
             const files = e.dataTransfer.files;
             if (files.length > 0) {
-                const file = files[0];
-                if (isValidPNGFile(file)) {
-                    fileInput.files = files;
+                const pngFiles = Array.from(files).filter(file => isValidPNGFile(file));
+                
+                if (pngFiles.length > 0) {
+                    const dt = new DataTransfer();
+                    pngFiles.forEach(file => dt.items.add(file));
+                    fileInput.files = dt.files;
+                    
                     const event = new Event('change', { bubbles: true });
                     fileInput.dispatchEvent(event);
                 } else {
