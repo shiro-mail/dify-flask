@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+
+{% block title %}ホーム - Dify PNG Analyzer{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-8 mx-auto">
+        <div class="text-center">
+            <h1 class="display-4 mb-4">Dify PNG Analyzer</h1>
+            <p class="lead mb-4">
+                PNG画像をアップロードして、Dify AIによる分析結果を確認できます。
+            </p>
+            
+            <div class="card mb-4">
+                <div class="card-body">
+                    <h5 class="card-title">機能概要</h5>
+                    <ul class="list-unstyled">
+                        <li>✅ PNG画像のアップロード</li>
+                        <li>✅ Dify AIによる画像分析</li>
+                        <li>✅ 分析結果の表示</li>
+                    </ul>
+                </div>
+            </div>
+            
+            <a href="{{ url_for('upload_page') }}" class="btn btn-primary btn-lg">
+                画像分析を開始
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %}

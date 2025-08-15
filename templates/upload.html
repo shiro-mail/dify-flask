@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+
+{% block title %}画像分析 - Dify PNG Analyzer{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-8 mx-auto">
+        <h2 class="mb-4">PNG画像分析</h2>
+        
+        <div class="card">
+            <div class="card-body">
+                <form id="uploadForm" enctype="multipart/form-data">
+                    <div class="mb-4">
+                        <label for="fileInput" class="form-label">PNG画像を選択してください</label>
+                        <div class="file-upload-area">
+                            <div class="upload-icon">📁</div>
+                            <p class="mb-2">クリックまたはドラッグ&ドロップでファイルを選択</p>
+                            <p class="text-muted small">対応形式: PNG画像のみ（最大16MB）</p>
+                        </div>
+                        <input type="file" class="form-control d-none" id="fileInput" name="file" accept=".png" required>
+                    </div>
+                    
+                    <div class="text-center">
+                        <button type="submit" class="btn btn-primary btn-lg" id="analyzeBtn">
+                            <span id="btnText">分析開始</span>
+                            <span id="btnSpinner" class="spinner-border spinner-border-sm d-none ms-2" role="status"></span>
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        
+        <!-- 結果表示エリア -->
+        <div id="resultArea" class="mt-4 d-none">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">分析結果</h5>
+                </div>
+                <div class="card-body">
+                    <div id="resultContent"></div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- エラー表示エリア -->
+        <div id="errorArea" class="mt-4 d-none">
+            <div class="alert alert-danger" role="alert">
+                <h6>エラーが発生しました</h6>
+                <div id="errorContent"></div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/upload.js') }}"></script>
+{% endblock %}
