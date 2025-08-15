@@ -7,12 +7,15 @@ function onDOMReady(callback) {
     }
 }
 
-function showMessage(message, type = 'info') {
+function showMessage(message, type = 'info', persistent = false) {
     const alertClass = type === 'error' ? 'alert-danger' : 
                       type === 'success' ? 'alert-success' : 'alert-info';
     
     const alertDiv = document.createElement('div');
     alertDiv.className = `alert ${alertClass} alert-dismissible fade show`;
+    if (persistent) {
+        alertDiv.setAttribute('data-persistent', 'true');
+    }
     alertDiv.innerHTML = `
         ${message}
         <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
@@ -22,12 +25,23 @@ function showMessage(message, type = 'info') {
     if (container) {
         container.insertBefore(alertDiv, container.firstChild);
         
-        setTimeout(() => {
-            if (alertDiv.parentNode) {
-                alertDiv.remove();
-            }
-        }, 5000);
+        if (!persistent) {
+            setTimeout(() => {
+                if (alertDiv.parentNode) {
+                    alertDiv.remove();
+                }
+            }, 5000);
+        }
     }
+}
+
+function clearPersistentMessages() {
+    const persistentMessages = document.querySelectorAll('[data-persistent="true"]');
+    persistentMessages.forEach(msg => {
+        if (msg.parentNode) {
+            msg.remove();
+        }
+    });
 }
 
 function formatFileSize(bytes) {

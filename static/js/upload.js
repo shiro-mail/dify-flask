@@ -76,10 +76,12 @@ onDOMReady(() => {
             
             if (validFiles === 0) {
                 fileInput.value = '';
+                hideElement(document.getElementById('selectedFilesArea'));
                 return;
             }
             
-            showMessage(`${validFiles}個のファイルを選択 (合計: ${formatFileSize(totalSize)})`, 'success');
+            showMessage(`${validFiles}個のファイルを選択 (合計: ${formatFileSize(totalSize)})`, 'success', true);
+            displaySelectedFiles(files, validFiles, totalSize);
         }
     });
     
@@ -129,6 +131,8 @@ onDOMReady(() => {
                 const result = await response.json();
                 
                 if (response.ok && result.success) {
+                    clearPersistentMessages();
+                    hideElement(document.getElementById('selectedFilesArea'));
                     showMessage('分析が完了しました！', 'success');
                     displayResult(result.results);
                 } else {
@@ -139,6 +143,8 @@ onDOMReady(() => {
                 setButtonLoading(analyzeBtn, false);
             }
         } catch (error) {
+            clearPersistentMessages();
+            hideElement(document.getElementById('selectedFilesArea'));
             const errorMessage = '分析中にエラーが発生しました';
             showMessage(errorMessage, 'error');
             displayError(errorMessage);
@@ -201,6 +207,8 @@ onDOMReady(() => {
                 setButtonLoading(analyzeBtn, false);
             }
         } catch (error) {
+            clearPersistentMessages();
+            hideElement(document.getElementById('selectedFilesArea'));
             const errorMessage = '処理開始中にエラーが発生しました';
             showMessage(errorMessage, 'error');
             displayError(errorMessage);
@@ -232,6 +240,8 @@ onDOMReady(() => {
                 
                 if (data.completed) {
                     clearInterval(pollInterval);
+                    clearPersistentMessages();
+                    hideElement(document.getElementById('selectedFilesArea'));
                     showMessage('すべてのファイルの分析が完了しました！', 'success');
                     setButtonLoading(analyzeBtn, false);
                     
@@ -245,6 +255,8 @@ onDOMReady(() => {
                 
             } catch (error) {
                 clearInterval(pollInterval);
+                clearPersistentMessages();
+                hideElement(document.getElementById('selectedFilesArea'));
                 const errorMessage = 'ステータス確認中にエラーが発生しました';
                 showMessage(errorMessage, 'error');
                 displayError(errorMessage);
@@ -268,5 +280,29 @@ onDOMReady(() => {
         }
         showElement(resultArea);
         hideElement(errorArea);
+    }
+    
+    function displaySelectedFiles(files, validCount, totalSize) {
+        const selectedFilesArea = document.getElementById('selectedFilesArea');
+        const selectedFilesList = document.getElementById('selectedFilesList');
+        
+        if (!selectedFilesArea || !selectedFilesList) return;
+        
+        let html = `<div class="mb-2"><strong>${validCount}個のファイルを選択 (合計: ${formatFileSize(totalSize)})</strong></div>`;
+        html += '<ul class="list-group list-group-flush">';
+        
+        for (let i = 0; i < files.length; i++) {
+            const file = files[i];
+            if (isValidPNGFile(file) && file.size <= 16 * 1024 * 1024) {
+                html += `<li class="list-group-item d-flex justify-content-between align-items-center">`;
+                html += `<span><i class="fas fa-file-image text-primary me-2"></i>${file.name}</span>`;
+                html += `<span class="badge bg-secondary">${formatFileSize(file.size)}</span>`;
+                html += `</li>`;
+            }
+        }
+        html += '</ul>';
+        
+        selectedFilesList.innerHTML = html;
+        showElement(selectedFilesArea);
     }
 });

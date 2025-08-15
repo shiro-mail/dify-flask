@@ -172,3 +172,23 @@ body {
         padding: 20px;
     }
 }
+
+#selectedFilesArea .card {
+    border: 1px solid #007bff;
+    background-color: #f8f9ff;
+}
+
+#selectedFilesArea .card-header {
+    background-color: #007bff;
+    color: white;
+    font-weight: 500;
+}
+
+#selectedFilesArea .list-group-item {
+    border-color: #e3f2fd;
+    background-color: transparent;
+}
+
+#selectedFilesArea .fas {
+    width: 16px;
+}
