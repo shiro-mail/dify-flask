@@ -77,9 +77,9 @@ onDOMReady(() => {
             setButtonLoading(analyzeBtn, true);
             showMessage(`${validFiles.length}個の画像をDifyで分析中...`, 'info');
             
-            const useIterator = document.getElementById('useIterator');
-            if (useIterator && useIterator.checked) {
-                await startIteratorProcessing(validFiles);
+            const useSequential = document.getElementById('useSequential');
+            if (useSequential && useSequential.checked) {
+                await startSequentialProcessing(validFiles);
             } else {
                 const response = await fetch('/api/dify/analyze-multiple', {
                     method: 'POST',
@@ -174,14 +174,14 @@ onDOMReady(() => {
         });
     }
     
-    async function startIteratorProcessing(validFiles) {
+    async function startSequentialProcessing(validFiles) {
         const formData = new FormData();
         for (let i = 0; i < validFiles.length; i++) {
             formData.append('files', validFiles[i]);
         }
         
         try {
-            const response = await fetch('/api/dify/analyze-iterator', {
+            const response = await fetch('/api/dify/analyze-sequential', {
                 method: 'POST',
                 body: formData
             });
@@ -190,7 +190,7 @@ onDOMReady(() => {
             
             if (response.ok && result.success) {
                 showMessage(`${result.total_files}個のファイルの処理を開始しました`, 'info');
-                startSSEConnection(result.session_id);
+                startPollingForResults(result.session_id, result.total_files);
             } else {
                 const errorMessage = result.error || '処理開始に失敗しました';
                 showMessage(errorMessage, 'error');
@@ -201,51 +201,63 @@ onDOMReady(() => {
             const errorMessage = '処理開始中にエラーが発生しました';
             showMessage(errorMessage, 'error');
             displayError(errorMessage);
-            console.error('Iterator processing error:', error);
+            console.error('Sequential processing error:', error);
             setButtonLoading(analyzeBtn, false);
         }
     }
     
-    function startSSEConnection(sessionId) {
-        const eventSource = new EventSource(`/api/sse/session/${sessionId}`);
+    function startPollingForResults(sessionId, totalFiles) {
+        let lastResultCount = 0;
+        let allResults = [];
         
-        eventSource.onmessage = function(event) {
-            const data = JSON.parse(event.data);
-            
-            if (data.error) {
-                showMessage(data.error, 'error');
-                displayError(data.error);
-                eventSource.close();
+        const pollInterval = setInterval(async () => {
+            try {
+                const response = await fetch(`/api/dify/session/${sessionId}/status?last_result_count=${lastResultCount}`);
+                const data = await response.json();
+                
+                if (!response.ok) {
+                    throw new Error(data.error || 'Status check failed');
+                }
+                
+                showMessage(`処理中: ${data.processed_files}/${data.total_files} 完了 (${data.progress_percentage}%)`, 'info');
+                
+                if (data.new_results && data.new_results.length > 0) {
+                    allResults = allResults.concat(data.new_results);
+                    displaySequentialResults(allResults);
+                    lastResultCount = data.total_results_count;
+                }
+                
+                if (data.completed) {
+                    clearInterval(pollInterval);
+                    showMessage('すべてのファイルの分析が完了しました！', 'success');
+                    setButtonLoading(analyzeBtn, false);
+                    
+                    if (data.errors && data.errors.length > 0) {
+                        console.warn('Processing errors:', data.errors);
+                    }
+                    
+                    fetch(`/api/dify/session/${sessionId}/cleanup`, { method: 'DELETE' })
+                        .catch(err => console.warn('Cleanup failed:', err));
+                }
+                
+            } catch (error) {
+                clearInterval(pollInterval);
+                const errorMessage = 'ステータス確認中にエラーが発生しました';
+                showMessage(errorMessage, 'error');
+                displayError(errorMessage);
+                console.error('Polling error:', error);
                 setButtonLoading(analyzeBtn, false);
-                return;
             }
-            
-            showMessage(`処理中: ${data.processed_files}/${data.total_files} 完了`, 'info');
-            
-            if (data.results && data.results.length > 0) {
-                displayIteratorResults(data.results);
-            }
-            
-            if (data.status === 'completed') {
-                showMessage('すべてのファイルの分析が完了しました！', 'success');
-                eventSource.close();
-                setButtonLoading(analyzeBtn, false);
-            }
-        };
-        
-        eventSource.onerror = function(event) {
-            console.error('SSE error:', event);
-            eventSource.close();
-            setButtonLoading(analyzeBtn, false);
-        };
+        }, 2000);
     }
     
-    function displayIteratorResults(results) {
+    function displaySequentialResults(results) {
         if (resultContent) {
             let html = '';
+            results.sort((a, b) => a.file_index - b.file_index);
             results.forEach((item, index) => {
                 html += `<div class="mb-3">`;
-                html += `<h6>ファイル ${index + 1}: ${item.filename}</h6>`;
+                html += `<h6>ファイル ${item.file_index + 1}: ${item.filename}</h6>`;
                 html += `<pre class="result-content">${formatJSON(item.result)}</pre>`;
                 html += `</div>`;
             });

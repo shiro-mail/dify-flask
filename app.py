@@ -4,8 +4,12 @@ import os
 import uuid
 import time
 import json
+from io import BytesIO
 from werkzeug.utils import secure_filename
 from threading import Lock
+from dotenv import load_dotenv
+
+load_dotenv()
 
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
@@ -114,8 +118,8 @@ def analyze_multiple_images():
     except Exception as e:
         return jsonify({'error': f'エラーが発生しました: {str(e)}'}), 500
 
-@app.route('/api/dify/analyze-iterator', methods=['POST'])
-def analyze_images_iterator():
+@app.route('/api/dify/analyze-sequential', methods=['POST'])
+def analyze_images_sequential():
     try:
         files = request.files.getlist('files')
         if not files or len(files) == 0:
@@ -135,7 +139,9 @@ def analyze_images_iterator():
                 continue
             
             filename = secure_filename(file.filename)
-            valid_files.append({'file': file, 'filename': filename})
+            file.seek(0)
+            file_data = file.read()
+            valid_files.append({'file_data': file_data, 'filename': filename})
         
         if len(valid_files) == 0:
             return jsonify({
@@ -153,13 +159,13 @@ def analyze_images_iterator():
                 'created_at': time.time()
             }
         
-        for i, file_info in enumerate(valid_files):
-            try:
-                file_info['file'].seek(0)
-                send_to_dify_iterator(file_info['file'], file_info['filename'], session_id, i)
-            except Exception as e:
-                with session_lock:
-                    processing_sessions[session_id]['errors'].append(f"{file_info['filename']}: {str(e)}")
+        import threading
+        thread = threading.Thread(
+            target=process_files_sequential, 
+            args=(valid_files, session_id)
+        )
+        thread.daemon = True
+        thread.start()
         
         return jsonify({
             'success': True,
@@ -174,6 +180,8 @@ def analyze_images_iterator():
 def send_to_dify(file_obj, filename):
     """Send file to Dify API using two-step process: upload then workflow execution"""
     try:
+        print(f"DEBUG: Starting Dify API call for {filename}")
+        
         upload_files = {
             'file': (filename, file_obj, 'image/png')
         }
@@ -181,6 +189,7 @@ def send_to_dify(file_obj, filename):
             'user': 'dify-flask-app'
         }
         
+        print(f"DEBUG: Uploading file to Dify...")
         upload_response = requests.post(
             f"{DIFY_API_BASE_URL}/v1/files/upload",
             headers={'Authorization': f'Bearer {DIFY_API_KEY}'},
@@ -189,27 +198,31 @@ def send_to_dify(file_obj, filename):
             timeout=30
         )
         
+        print(f"DEBUG: Upload response status: {upload_response.status_code}")
         if upload_response.status_code != 201:
+            print(f"DEBUG: Upload response content: {upload_response.text}")
             return {'error': f'Difyファイルアップロードエラー: {upload_response.status_code}'}
         
         upload_result = upload_response.json()
         file_id = upload_result.get('id')
+        print(f"DEBUG: File uploaded with ID: {file_id}")
         
         if not file_id:
             return {'error': 'ファイルアップロードからIDを取得できませんでした'}
         
         workflow_payload = {
             "inputs": {
-                "input_file": [{
+                "input_file": {
                     "type": "image",
                     "transfer_method": "local_file", 
                     "upload_file_id": file_id
-                }]
+                }
             },
             "response_mode": "blocking",
             "user": "dify-flask-app"
         }
         
+        print(f"DEBUG: Executing workflow...")
         workflow_response = requests.post(
             f"{DIFY_API_BASE_URL}/v1/workflows/run",
             headers={
@@ -220,146 +233,118 @@ def send_to_dify(file_obj, filename):
             timeout=60
         )
         
+        print(f"DEBUG: Workflow response status: {workflow_response.status_code}")
         if workflow_response.status_code != 200:
+            print(f"DEBUG: Workflow response content: {workflow_response.text}")
             return {'error': f'Difyワークフロー実行エラー: {workflow_response.status_code}'}
         
         workflow_result = workflow_response.json()
+        print(f"DEBUG: Workflow result: {workflow_result}")
         
         if 'data' in workflow_result and 'outputs' in workflow_result['data']:
-            return workflow_result['data']['outputs']
+            result_data = workflow_result['data']['outputs']
+            print(f"DEBUG: Extracted result data: {result_data}")
+            return result_data
         else:
+            print(f"DEBUG: No outputs found in workflow result")
             return {'error': 'Difyワークフローの実行に失敗しました'}
             
     except requests.exceptions.Timeout:
+        print(f"DEBUG: Timeout error for {filename}")
         return {'error': 'Dify APIのタイムアウトが発生しました'}
     except requests.exceptions.RequestException as e:
+        print(f"DEBUG: Request error for {filename}: {str(e)}")
         return {'error': f'Dify API接続エラー: {str(e)}'}
     except Exception as e:
+        print(f"DEBUG: General error for {filename}: {str(e)}")
         return {'error': f'データ取得中にエラーが発生しました: {str(e)}'}
 
-def send_to_dify_iterator(file_obj, filename, session_id, file_index):
-    """Send file to Dify API using iterator workflow (non-blocking)"""
-    try:
-        upload_files = {
-            'file': (filename, file_obj, 'image/png')
-        }
-        upload_data = {
-            'user': 'dify-flask-app'
-        }
-        
-        upload_response = requests.post(
-            f"{DIFY_API_BASE_URL}/v1/files/upload",
-            headers={'Authorization': f'Bearer {DIFY_API_KEY}'},
-            files=upload_files,
-            data=upload_data,
-            timeout=30
-        )
-        
-        if upload_response.status_code != 201:
-            raise Exception(f'Difyファイルアップロードエラー: {upload_response.status_code}')
-        
-        upload_result = upload_response.json()
-        file_id = upload_result.get('id')
-        
-        if not file_id:
-            raise Exception('ファイルアップロードからIDを取得できませんでした')
-        
-        workflow_payload = {
-            "inputs": {
-                "input_file": [{
-                    "type": "image",
-                    "transfer_method": "local_file", 
-                    "upload_file_id": file_id
-                }]
-            },
-            "response_mode": "streaming",
-            "user": "dify-flask-app",
-            "metadata": {
-                "session_id": session_id,
-                "filename": filename,
-                "file_index": file_index
-            }
-        }
-        
-        workflow_response = requests.post(
-            f"{DIFY_API_BASE_URL}/v1/workflows/run",
-            headers={
-                'Authorization': f'Bearer {DIFY_API_KEY}',
-                'Content-Type': 'application/json'
-            },
-            json=workflow_payload,
-            timeout=10
-        )
-        
-        if workflow_response.status_code != 200:
-            raise Exception(f'Difyワークフロー実行エラー: {workflow_response.status_code}')
-        
-        
-    except Exception as e:
-        with session_lock:
-            if session_id in processing_sessions:
-                processing_sessions[session_id]['errors'].append(f'{filename}: {str(e)}')
+def process_files_sequential(valid_files, session_id):
+    """Process files one by one in background thread"""
+    print(f"DEBUG: Starting sequential processing for session {session_id}")
+    
+    for i, file_info in enumerate(valid_files):
+        try:
+            filename = file_info['filename']
+            file_data = file_info['file_data']
+            
+            print(f"DEBUG: Processing file {i+1}/{len(valid_files)}: {filename}")
+            
+            from io import BytesIO
+            file_obj = BytesIO(file_data)
+            
+            result = send_to_dify(file_obj, filename)
+            
+            with session_lock:
+                if session_id in processing_sessions:
+                    session = processing_sessions[session_id]
+                    
+                    if 'error' in result:
+                        session['errors'].append(f'{filename}: {result["error"]}')
+                    else:
+                        session['results'].append({
+                            'filename': filename,
+                            'file_index': i,
+                            'result': result,
+                            'completed_at': time.time()
+                        })
+                    
+                    session['processed_files'] += 1
+                    print(f"DEBUG: Completed {session['processed_files']}/{session['total_files']} files")
+                    
+        except Exception as e:
+            print(f"DEBUG: Error processing {filename}: {str(e)}")
+            with session_lock:
+                if session_id in processing_sessions:
+                    processing_sessions[session_id]['errors'].append(f'{filename}: {str(e)}')
+                    processing_sessions[session_id]['processed_files'] += 1
+    
+    with session_lock:
+        if session_id in processing_sessions:
+            processing_sessions[session_id]['status'] = 'completed'
+            print(f"DEBUG: Session {session_id} completed")
 
-@app.route('/api/webhook/result', methods=['POST'])
-def webhook_result():
+@app.route('/api/dify/session/<session_id>/status')
+def get_session_status(session_id):
+    """Get current status and results for a processing session"""
     try:
-        data = request.get_json()
-        
-        if not data:
-            return jsonify({'error': 'No data received'}), 400
-        
-        session_id = data.get('session_id')
-        filename = data.get('filename')
-        file_index = data.get('file_index')
-        result = data.get('result')
-        
-        if not session_id or session_id not in processing_sessions:
-            return jsonify({'error': 'Invalid session'}), 400
+        if session_id not in processing_sessions:
+            return jsonify({'error': 'Session not found'}), 404
         
         with session_lock:
             session = processing_sessions[session_id]
-            session['results'].append({
-                'filename': filename,
-                'file_index': file_index,
-                'result': result
+            
+            last_check = request.args.get('last_result_count', 0, type=int)
+            new_results = session['results'][last_check:]
+            
+            return jsonify({
+                'session_id': session_id,
+                'status': session['status'],
+                'processed_files': session['processed_files'],
+                'total_files': session['total_files'],
+                'progress_percentage': round((session['processed_files'] / session['total_files']) * 100, 1),
+                'new_results': new_results,
+                'total_results_count': len(session['results']),
+                'errors': session['errors'],
+                'completed': session['status'] == 'completed'
             })
-            session['processed_files'] += 1
             
-            if session['processed_files'] >= session['total_files']:
-                session['status'] = 'completed'
-        
-        return jsonify({'success': True, 'message': 'Result received'})
-        
     except Exception as e:
-        return jsonify({'error': f'Webhook error: {str(e)}'}), 500
+        return jsonify({'error': f'Status check error: {str(e)}'}), 500
 
-@app.route('/api/sse/session/<session_id>')
-def sse_session_updates(session_id):
-    def generate():
-        while True:
-            if session_id not in processing_sessions:
-                yield f"data: {json.dumps({'error': 'Session not found'})}\n\n"
-                break
-            
-            with session_lock:
-                session = processing_sessions[session_id]
-                data = {
-                    'session_id': session_id,
-                    'status': session['status'],
-                    'processed_files': session['processed_files'],
-                    'total_files': session['total_files'],
-                    'results': session['results'],
-                    'errors': session['errors']
-                }
-            
-            yield f"data: {json.dumps(data)}\n\n"
-            
-            if session['status'] == 'completed':
-                break
-            
-            time.sleep(1)
-    
-    return Response(generate(), mimetype='text/plain')
+@app.route('/api/dify/session/<session_id>/cleanup', methods=['DELETE'])
+def cleanup_session(session_id):
+    """Clean up completed session data"""
+    try:
+        with session_lock:
+            if session_id in processing_sessions:
+                del processing_sessions[session_id]
+                return jsonify({'success': True, 'message': 'Session cleaned up'})
+            else:
+                return jsonify({'error': 'Session not found'}), 404
+                
+    except Exception as e:
+        return jsonify({'error': f'Cleanup error: {str(e)}'}), 500
 
 @app.route('/about')
 def about():
