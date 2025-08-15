@@ -230,7 +230,7 @@ onDOMReady(() => {
                     throw new Error(data.error || 'Status check failed');
                 }
                 
-                showMessage(`処理中: ${data.processed_files}/${data.total_files} 完了 (${data.progress_percentage}%)`, 'info');
+                showMessage(`処理中: ${data.processed_files}/${data.total_files} 完了 (${data.progress_percentage}%) - 大きなファイルの場合、処理に時間がかかる場合があります`, 'info');
                 
                 if (data.new_results && data.new_results.length > 0) {
                     allResults = allResults.concat(data.new_results);
