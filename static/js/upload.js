@@ -77,27 +77,32 @@ onDOMReady(() => {
             setButtonLoading(analyzeBtn, true);
             showMessage(`${validFiles.length}個の画像をDifyで分析中...`, 'info');
             
-            const response = await fetch('/api/dify/analyze-multiple', {
-                method: 'POST',
-                body: formData
-            });
-            
-            const result = await response.json();
-            
-            if (response.ok && result.success) {
-                showMessage('分析が完了しました！', 'success');
-                displayResult(result.results);
+            const useSequential = document.getElementById('useSequential');
+            if (useSequential && useSequential.checked) {
+                await startSequentialProcessing(validFiles);
             } else {
-                const errorMessage = result.error || '分析に失敗しました';
-                showMessage(errorMessage, 'error');
-                displayError(errorMessage);
+                const response = await fetch('/api/dify/analyze-multiple', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok && result.success) {
+                    showMessage('分析が完了しました！', 'success');
+                    displayResult(result.results);
+                } else {
+                    const errorMessage = result.error || '分析に失敗しました';
+                    showMessage(errorMessage, 'error');
+                    displayError(errorMessage);
+                }
+                setButtonLoading(analyzeBtn, false);
             }
         } catch (error) {
             const errorMessage = '分析中にエラーが発生しました';
             showMessage(errorMessage, 'error');
             displayError(errorMessage);
             console.error('Analysis error:', error);
-        } finally {
             setButtonLoading(analyzeBtn, false);
         }
     });
@@ -167,5 +172,98 @@ onDOMReady(() => {
                 }
             }
         });
+    }
+    
+    async function startSequentialProcessing(validFiles) {
+        const formData = new FormData();
+        for (let i = 0; i < validFiles.length; i++) {
+            formData.append('files', validFiles[i]);
+        }
+        
+        try {
+            const response = await fetch('/api/dify/analyze-sequential', {
+                method: 'POST',
+                body: formData
+            });
+            
+            const result = await response.json();
+            
+            if (response.ok && result.success) {
+                showMessage(`${result.total_files}個のファイルの処理を開始しました`, 'info');
+                startPollingForResults(result.session_id, result.total_files);
+            } else {
+                const errorMessage = result.error || '処理開始に失敗しました';
+                showMessage(errorMessage, 'error');
+                displayError(errorMessage);
+                setButtonLoading(analyzeBtn, false);
+            }
+        } catch (error) {
+            const errorMessage = '処理開始中にエラーが発生しました';
+            showMessage(errorMessage, 'error');
+            displayError(errorMessage);
+            console.error('Sequential processing error:', error);
+            setButtonLoading(analyzeBtn, false);
+        }
+    }
+    
+    function startPollingForResults(sessionId, totalFiles) {
+        let lastResultCount = 0;
+        let allResults = [];
+        
+        const pollInterval = setInterval(async () => {
+            try {
+                const response = await fetch(`/api/dify/session/${sessionId}/status?last_result_count=${lastResultCount}`);
+                const data = await response.json();
+                
+                if (!response.ok) {
+                    throw new Error(data.error || 'Status check failed');
+                }
+                
+                showMessage(`処理中: ${data.processed_files}/${data.total_files} 完了 (${data.progress_percentage}%)`, 'info');
+                
+                if (data.new_results && data.new_results.length > 0) {
+                    allResults = allResults.concat(data.new_results);
+                    displaySequentialResults(allResults);
+                    lastResultCount = data.total_results_count;
+                }
+                
+                if (data.completed) {
+                    clearInterval(pollInterval);
+                    showMessage('すべてのファイルの分析が完了しました！', 'success');
+                    setButtonLoading(analyzeBtn, false);
+                    
+                    if (data.errors && data.errors.length > 0) {
+                        console.warn('Processing errors:', data.errors);
+                    }
+                    
+                    fetch(`/api/dify/session/${sessionId}/cleanup`, { method: 'DELETE' })
+                        .catch(err => console.warn('Cleanup failed:', err));
+                }
+                
+            } catch (error) {
+                clearInterval(pollInterval);
+                const errorMessage = 'ステータス確認中にエラーが発生しました';
+                showMessage(errorMessage, 'error');
+                displayError(errorMessage);
+                console.error('Polling error:', error);
+                setButtonLoading(analyzeBtn, false);
+            }
+        }, 2000);
+    }
+    
+    function displaySequentialResults(results) {
+        if (resultContent) {
+            let html = '';
+            results.sort((a, b) => a.file_index - b.file_index);
+            results.forEach((item, index) => {
+                html += `<div class="mb-3">`;
+                html += `<h6>ファイル ${item.file_index + 1}: ${item.filename}</h6>`;
+                html += `<pre class="result-content">${formatJSON(item.result)}</pre>`;
+                html += `</div>`;
+            });
+            resultContent.innerHTML = html;
+        }
+        showElement(resultArea);
+        hideElement(errorArea);
     }
 });
