@@ -157,7 +157,8 @@ def analyze_images_sequential():
                 'results': [],
                 'errors': errors,
                 'status': 'processing',
-                'created_at': time.time()
+                'created_at': time.time(),
+                'current_processing': None
             }
         
         import threading
@@ -345,6 +346,145 @@ def send_to_dify(file_obj, filename, max_retries=3):
     
     return {'error': f'予期しないエラーが発生しました (最大{max_retries}回試行後)'}
 
+def send_to_dify_with_progress(file_obj, filename, session_id, file_index, max_retries=3):
+    """Send file to Dify API with progress tracking for UI updates"""
+    
+    try:
+        print(f"DEBUG: Starting Dify API call for {filename}")
+        
+        upload_files = {
+            'file': (filename, file_obj, 'image/png')
+        }
+        upload_data = {
+            'user': 'dify-flask-app'
+        }
+        
+        print(f"DEBUG: Uploading file to Dify...")
+        upload_response = requests.post(
+            f"{DIFY_API_BASE_URL}/v1/files/upload",
+            headers={'Authorization': f'Bearer {DIFY_API_KEY}'},
+            files=upload_files,
+            data=upload_data,
+            timeout=30
+        )
+        
+        print(f"DEBUG: Upload response status: {upload_response.status_code}")
+        if upload_response.status_code != 201:
+            print(f"DEBUG: Upload response content: {upload_response.text}")
+            return {'error': f'Difyファイルアップロードエラー: {upload_response.status_code}'}
+        
+        upload_result = upload_response.json()
+        file_id = upload_result.get('id')
+        print(f"DEBUG: File uploaded with ID: {file_id}")
+        
+        if not file_id:
+            return {'error': 'ファイルアップロードからIDを取得できませんでした'}
+        
+    except requests.exceptions.Timeout:
+        print(f"DEBUG: Upload timeout error for {filename}")
+        return {'error': 'Dify APIアップロードのタイムアウトが発生しました'}
+    except requests.exceptions.RequestException as e:
+        print(f"DEBUG: Upload request error for {filename}: {str(e)}")
+        return {'error': f'Dify APIアップロード接続エラー: {str(e)}'}
+    except Exception as e:
+        print(f"DEBUG: Upload general error for {filename}: {str(e)}")
+        return {'error': f'ファイルアップロード中にエラーが発生しました: {str(e)}'}
+    
+    for attempt in range(1, max_retries + 1):
+        try:
+            print(f"DEBUG: Workflow execution attempt {attempt}/{max_retries} for {filename}")
+            
+            with session_lock:
+                if session_id in processing_sessions and processing_sessions[session_id]['current_processing']:
+                    processing_sessions[session_id]['current_processing']['current_attempt'] = attempt
+            
+            workflow_payload = {
+                "inputs": {
+                    "input_file": {
+                        "type": "image",
+                        "transfer_method": "local_file", 
+                        "upload_file_id": file_id
+                    }
+                },
+                "response_mode": "blocking",
+                "user": "dify-flask-app"
+            }
+            
+            print(f"DEBUG: Executing workflow with payload: {json.dumps(workflow_payload, indent=2)}")
+            workflow_response = requests.post(
+                f"{DIFY_API_BASE_URL}/v1/workflows/run",
+                headers={
+                    'Authorization': f'Bearer {DIFY_API_KEY}',
+                    'Content-Type': 'application/json'
+                },
+                json=workflow_payload,
+                timeout=(30, 300)
+            )
+            
+            print(f"DEBUG: Workflow response status: {workflow_response.status_code}")
+            if workflow_response.status_code != 200:
+                print(f"DEBUG: Workflow response content: {workflow_response.text}")
+                if attempt == max_retries:
+                    return {'error': f'Difyワークフロー実行エラー: {workflow_response.status_code} (最大{max_retries}回試行後)'}
+                else:
+                    print(f"DEBUG: Retrying workflow execution for {filename} (attempt {attempt + 1})")
+                    time.sleep(2)  # Wait 2 seconds before retry
+                    continue
+            
+            workflow_result = workflow_response.json()
+            print(f"DEBUG: Workflow result: {workflow_result}")
+            
+            if 'data' in workflow_result and 'outputs' in workflow_result['data']:
+                result_data = workflow_result['data']['outputs']
+                print(f"DEBUG: Extracted result data: {result_data}")
+                
+                if is_valid_json_response(result_data):
+                    print(f"DEBUG: Valid JSON response received for {filename} on attempt {attempt}")
+                    return result_data
+                else:
+                    print(f"DEBUG: Invalid JSON response for {filename} on attempt {attempt}")
+                    if attempt == max_retries:
+                        return {'error': f'有効なJSONデータが取得できませんでした (最大{max_retries}回試行後)'}
+                    else:
+                        print(f"DEBUG: Retrying for valid JSON response for {filename} (attempt {attempt + 1})")
+                        time.sleep(2)  # Wait 2 seconds before retry
+                        continue
+            else:
+                print(f"DEBUG: No outputs found in workflow result for {filename} on attempt {attempt}")
+                if attempt == max_retries:
+                    return {'error': f'Difyワークフローの実行に失敗しました (最大{max_retries}回試行後)'}
+                else:
+                    print(f"DEBUG: Retrying workflow execution for {filename} (attempt {attempt + 1})")
+                    time.sleep(2)  # Wait 2 seconds before retry
+                    continue
+                    
+        except requests.exceptions.Timeout:
+            print(f"DEBUG: Workflow timeout error for {filename} on attempt {attempt}")
+            if attempt == max_retries:
+                return {'error': f'Dify APIワークフローのタイムアウトが発生しました (最大{max_retries}回試行後)'}
+            else:
+                print(f"DEBUG: Retrying after timeout for {filename} (attempt {attempt + 1})")
+                time.sleep(2)
+                continue
+        except requests.exceptions.RequestException as e:
+            print(f"DEBUG: Workflow request error for {filename} on attempt {attempt}: {str(e)}")
+            if attempt == max_retries:
+                return {'error': f'Dify APIワークフロー接続エラー: {str(e)} (最大{max_retries}回試行後)'}
+            else:
+                print(f"DEBUG: Retrying after request error for {filename} (attempt {attempt + 1})")
+                time.sleep(2)
+                continue
+        except Exception as e:
+            print(f"DEBUG: Workflow general error for {filename} on attempt {attempt}: {str(e)}")
+            if attempt == max_retries:
+                return {'error': f'ワークフロー実行中にエラーが発生しました: {str(e)} (最大{max_retries}回試行後)'}
+            else:
+                print(f"DEBUG: Retrying after general error for {filename} (attempt {attempt + 1})")
+                time.sleep(2)
+                continue
+    
+    return {'error': f'予期しないエラーが発生しました (最大{max_retries}回試行後)'}
+
 def process_files_sequential(valid_files, session_id):
     """Process files one by one in background thread"""
     print(f"DEBUG: Starting sequential processing for session {session_id}")
@@ -356,14 +496,25 @@ def process_files_sequential(valid_files, session_id):
             
             print(f"DEBUG: Processing file {i+1}/{len(valid_files)}: {filename}")
             
+            with session_lock:
+                if session_id in processing_sessions:
+                    processing_sessions[session_id]['current_processing'] = {
+                        'file_index': i,
+                        'filename': filename,
+                        'started_at': time.time(),
+                        'current_attempt': 0
+                    }
+            
             from io import BytesIO
             file_obj = BytesIO(file_data)
             
-            result = send_to_dify(file_obj, filename)
+            result = send_to_dify_with_progress(file_obj, filename, session_id, i)
             
             with session_lock:
                 if session_id in processing_sessions:
                     session = processing_sessions[session_id]
+                    
+                    session['current_processing'] = None
                     
                     if 'error' in result:
                         session['errors'].append(f'{filename}: {result["error"]}')
@@ -390,6 +541,7 @@ def process_files_sequential(valid_files, session_id):
             print(f"DEBUG: Error processing {filename}: {str(e)}")
             with session_lock:
                 if session_id in processing_sessions:
+                    processing_sessions[session_id]['current_processing'] = None
                     processing_sessions[session_id]['errors'].append(f'{filename}: {str(e)}')
                     processing_sessions[session_id]['results'].append({
                         'filename': filename,
@@ -403,6 +555,7 @@ def process_files_sequential(valid_files, session_id):
     with session_lock:
         if session_id in processing_sessions:
             processing_sessions[session_id]['status'] = 'completed'
+            processing_sessions[session_id]['current_processing'] = None
             print(f"DEBUG: Session {session_id} completed")
 
 @app.route('/api/dify/session/<session_id>/status')
@@ -418,6 +571,18 @@ def get_session_status(session_id):
             last_check = request.args.get('last_result_count', 0, type=int)
             new_results = session['results'][last_check:]
             
+            current_processing = session.get('current_processing')
+            current_processing_info = None
+            
+            if current_processing:
+                elapsed_time = time.time() - current_processing['started_at']
+                current_processing_info = {
+                    'file_index': current_processing['file_index'],
+                    'filename': current_processing['filename'],
+                    'current_attempt': current_processing['current_attempt'],
+                    'elapsed_seconds': round(elapsed_time, 1)
+                }
+            
             return jsonify({
                 'session_id': session_id,
                 'status': session['status'],
@@ -427,7 +592,8 @@ def get_session_status(session_id):
                 'new_results': new_results,
                 'total_results_count': len(session['results']),
                 'errors': session['errors'],
-                'completed': session['status'] == 'completed'
+                'completed': session['status'] == 'completed',
+                'current_processing': current_processing_info
             })
             
     except Exception as e:

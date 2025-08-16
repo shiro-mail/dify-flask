@@ -220,6 +220,17 @@ body {
     font-weight: 500;
 }
 
+.file-progress-item.processing {
+    background-color: #e3f2fd;
+    border-left: 3px solid #007bff;
+}
+
+.file-progress-item .file-status {
+    font-size: 0.85rem;
+    min-width: 120px;
+    text-align: right;
+}
+
 .file-progress-item.failed .file-name {
     color: #dc3545;
     text-decoration: line-through;
