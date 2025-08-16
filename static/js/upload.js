@@ -326,12 +326,13 @@ onDOMReady(() => {
             if (fileItem) {
                 const statusElement = fileItem.querySelector('.file-status');
                 if (statusElement) {
+                    const elapsedText = result.elapsed_seconds ? ` (${result.elapsed_seconds}秒)` : '';
                     if (result.failed) {
-                        statusElement.innerHTML = '❌';
-                        statusElement.style.color = '#dc3545'; // Bootstrap danger color
+                        statusElement.innerHTML = `❌${elapsedText}`;
+                        statusElement.style.color = '#dc3545';
                         fileItem.classList.add('failed');
                     } else {
-                        statusElement.innerHTML = '✅';
+                        statusElement.innerHTML = `✅${elapsedText}`;
                         fileItem.classList.add('completed');
                     }
                 }
@@ -347,8 +348,7 @@ onDOMReady(() => {
             const statusElement = fileItem.querySelector('.file-status');
             if (statusElement) {
                 const attemptText = `${processingInfo.current_attempt}回目分析中`;
-                const elapsedText = `(${processingInfo.elapsed_seconds}秒)`;
-                statusElement.innerHTML = `🔄 ${attemptText} ${elapsedText}`;
+                statusElement.innerHTML = `🔄 ${attemptText}`;
                 statusElement.style.color = '#007bff';
                 fileItem.classList.add('processing');
                 fileItem.classList.remove('completed', 'failed');
