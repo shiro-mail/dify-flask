@@ -261,8 +261,7 @@ def send_to_dify(file_obj, filename, max_retries=None):
                 result_data = workflow_result['data']['outputs']
                 print(f"DEBUG: Extracted result data: {result_data}")
                 
-                processed_data = process_dify_response(result_data)
-                return processed_data
+                return result_data
             else:
                 print(f"DEBUG: No outputs found in workflow result")
                 return {'error': 'Difyワークフローの実行に失敗しました'}
@@ -284,12 +283,44 @@ def send_to_dify(file_obj, filename, max_retries=None):
             return {'error': f'データ取得中にエラーが発生しました: {str(e)}'}
 
 def is_valid_json_response(response_data):
-    """Check if Dify response contains valid JSON data starting with [{ and ending with }]"""
+    """Check if Dify response contains structured data vs plain text error"""
     if not response_data or 'text' not in response_data:
         return False
     
     text_content = response_data['text'].strip()
-    return text_content.startswith('[{') and text_content.endswith('}]')
+    
+    
+    error_indicators = [
+        'error',
+        'failed',
+        'timeout',
+        'unable to',
+        'cannot',
+        'invalid',
+        'not found',
+        'access denied'
+    ]
+    
+    if len(text_content) < 100:
+        text_lower = text_content.lower()
+        if any(indicator in text_lower for indicator in error_indicators):
+            return False
+    
+    structured_indicators = [
+        '[{',  # JSON array start
+        '```json',  # Markdown JSON block
+        '```',  # Any markdown code block
+        '"',  # JSON string indicators
+        '{',  # JSON object start
+    ]
+    
+    if any(indicator in text_content for indicator in structured_indicators):
+        return True
+    
+    if len(text_content) > 200:
+        return True
+    
+    return False
 
 def process_dify_response(result_data):
     """Process Dify API response and extract structured data from various formats"""
@@ -367,6 +398,14 @@ def process_files_sequential(valid_files, session_id):
                 
                 print(f"DEBUG: Attempt {attempt + 1}/{max_file_retries} for {filename}")
                 result = send_to_dify(file_obj, filename)
+                
+                if 'error' in result:
+                    print(f"DEBUG: API error on attempt {attempt + 1}: {result['error']}")
+                    if attempt < max_file_retries - 1:
+                        time.sleep(2 * (attempt + 1))  # Exponential backoff: 2s, 4s, 6s
+                        continue
+                    else:
+                        break  # Max retries reached, use this error result
                 
                 if 'error' in result:
                     print(f"DEBUG: API error on attempt {attempt + 1}: {result['error']}")
