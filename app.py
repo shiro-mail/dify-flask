@@ -283,6 +283,14 @@ def send_to_dify(file_obj, filename, max_retries=None):
             print(f"DEBUG: General error for {filename}: {str(e)}")
             return {'error': f'データ取得中にエラーが発生しました: {str(e)}'}
 
+def is_valid_json_response(response_data):
+    """Check if Dify response contains valid JSON data starting with [{ and ending with }]"""
+    if not response_data or 'text' not in response_data:
+        return False
+    
+    text_content = response_data['text'].strip()
+    return text_content.startswith('[{') and text_content.endswith('}]')
+
 def process_dify_response(result_data):
     """Process Dify API response and extract structured data from various formats"""
     print(f"DEBUG: Processing Dify response: {result_data}")
@@ -338,41 +346,89 @@ def process_files_sequential(valid_files, session_id):
     print(f"DEBUG: Starting sequential processing for session {session_id}")
     
     for i, file_info in enumerate(valid_files):
-        try:
-            filename = file_info['filename']
-            file_data = file_info['file_data']
-            
-            print(f"DEBUG: Processing file {i+1}/{len(valid_files)}: {filename}")
-            
-            from io import BytesIO
-            file_obj = BytesIO(file_data)
-            
-            result = send_to_dify(file_obj, filename)
-            
-            with session_lock:
-                if session_id in processing_sessions:
-                    session = processing_sessions[session_id]
-                    
-                    if 'error' in result:
-                        session['errors'].append(f'{filename}: {result["error"]}')
+        filename = file_info['filename']
+        file_data = file_info['file_data']
+        
+        print(f"DEBUG: Processing file {i+1}/{len(valid_files)}: {filename}")
+        
+        if i > 0:
+            delay = 2  # 2 second delay between files
+            print(f"DEBUG: Waiting {delay} seconds before processing next file...")
+            time.sleep(delay)
+        
+        max_file_retries = 3
+        result = None
+        success = False
+        
+        for attempt in range(max_file_retries):
+            try:
+                from io import BytesIO
+                file_obj = BytesIO(file_data)
+                
+                print(f"DEBUG: Attempt {attempt + 1}/{max_file_retries} for {filename}")
+                result = send_to_dify(file_obj, filename)
+                
+                if 'error' in result:
+                    print(f"DEBUG: API error on attempt {attempt + 1}: {result['error']}")
+                    if attempt < max_file_retries - 1:
+                        time.sleep(2 * (attempt + 1))  # Exponential backoff: 2s, 4s, 6s
+                        continue
                     else:
-                        processed_result = process_dify_response(result)
-                        session['results'].append({
-                            'filename': filename,
-                            'file_index': i,
-                            'result': processed_result,
-                            'completed_at': time.time()
-                        })
-                    
-                    session['processed_files'] += 1
-                    print(f"DEBUG: Completed {session['processed_files']}/{session['total_files']} files")
-                    
-        except Exception as e:
-            print(f"DEBUG: Error processing {filename}: {str(e)}")
-            with session_lock:
-                if session_id in processing_sessions:
-                    processing_sessions[session_id]['errors'].append(f'{filename}: {str(e)}')
-                    processing_sessions[session_id]['processed_files'] += 1
+                        break  # Max retries reached, use this error result
+                
+                if not is_valid_json_response(result):
+                    print(f"DEBUG: Invalid JSON format on attempt {attempt + 1} for {filename}")
+                    if attempt < max_file_retries - 1:
+                        time.sleep(2 * (attempt + 1))  # Exponential backoff
+                        result = {'error': f'Invalid response format (attempt {attempt + 1})'}
+                        continue
+                    else:
+                        result = {'error': f'Invalid response format after {max_file_retries} attempts'}
+                        break
+                
+                print(f"DEBUG: Valid JSON response received for {filename} on attempt {attempt + 1}")
+                success = True
+                break
+                
+            except Exception as e:
+                print(f"DEBUG: Exception on attempt {attempt + 1} for {filename}: {str(e)}")
+                if attempt < max_file_retries - 1:
+                    time.sleep(2 * (attempt + 1))  # Exponential backoff
+                    result = {'error': f'Processing exception (attempt {attempt + 1}): {str(e)}'}
+                    continue
+                else:
+                    result = {'error': f'Processing failed after {max_file_retries} attempts: {str(e)}'}
+                    break
+        
+        with session_lock:
+            if session_id in processing_sessions:
+                session = processing_sessions[session_id]
+                
+                if 'error' in result or not success:
+                    error_msg = f'{filename}: {result.get("error", "Unknown error")}'
+                    session['errors'].append(error_msg)
+                    session['results'].append({
+                        'filename': filename,
+                        'file_index': i,
+                        'result': {'error': result.get('error', 'Processing failed')},
+                        'failed': True,
+                        'completed_at': time.time()
+                    })
+                    print(f"DEBUG: File processing failed - {error_msg}")
+                else:
+                    processed_result = process_dify_response(result)
+                    session['results'].append({
+                        'filename': filename,
+                        'file_index': i,
+                        'result': processed_result,
+                        'failed': False,
+                        'completed_at': time.time()
+                    })
+                    print(f"DEBUG: File processing success - {filename}")
+                
+                session['processed_files'] += 1
+                session['last_activity'] = time.time()
+                print(f"DEBUG: Completed {session['processed_files']}/{session['total_files']} files")
     
     with session_lock:
         if session_id in processing_sessions:

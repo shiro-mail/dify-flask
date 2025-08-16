@@ -323,8 +323,14 @@ onDOMReady(() => {
             if (fileItem) {
                 const statusElement = fileItem.querySelector('.file-status');
                 if (statusElement) {
-                    statusElement.innerHTML = '✅';
-                    fileItem.classList.add('completed');
+                    if (result.failed) {
+                        statusElement.innerHTML = '❌';
+                        statusElement.style.color = '#dc3545'; // Bootstrap danger color
+                        fileItem.classList.add('failed');
+                    } else {
+                        statusElement.innerHTML = '✅';
+                        fileItem.classList.add('completed');
+                    }
                 }
             }
         });
