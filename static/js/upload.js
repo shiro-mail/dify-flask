@@ -154,18 +154,40 @@ onDOMReady(() => {
                 results.forEach((item, index) => {
                     html += `<div class="mb-3">`;
                     html += `<h6>ファイル ${index + 1}: ${item.filename}</h6>`;
-                    html += `<pre class="result-content">${formatJSON(item.result)}</pre>`;
+                    html += formatResultData(item.result);
                     html += `</div>`;
                 });
                 resultContent.innerHTML = html;
             } else if (typeof results === 'object') {
-                resultContent.innerHTML = `<pre class="result-content">${formatJSON(results)}</pre>`;
+                resultContent.innerHTML = formatResultData(results);
             } else {
                 resultContent.textContent = results;
             }
         }
         showElement(resultArea);
         hideElement(errorArea);
+    }
+    
+    function formatResultData(result) {
+        if (result && result.extracted_data) {
+            return `<pre class="result-content">${formatJSON(result.extracted_data)}</pre>`;
+        } else if (result && result.text) {
+            const textContent = result.text;
+            if (textContent.includes('```json')) {
+                const jsonMatch = textContent.match(/```json\s*\n(.*?)\n```/s);
+                if (jsonMatch) {
+                    try {
+                        const parsedData = JSON.parse(jsonMatch[1]);
+                        return `<pre class="result-content">${formatJSON(parsedData)}</pre>`;
+                    } catch (e) {
+                        console.warn('Failed to parse JSON from markdown:', e);
+                    }
+                }
+            }
+            return `<pre class="result-content">${textContent}</pre>`;
+        } else {
+            return `<pre class="result-content">${formatJSON(result)}</pre>`;
+        }
     }
     
     function displayError(error) {
@@ -261,7 +283,7 @@ onDOMReady(() => {
             results.forEach((item, index) => {
                 html += `<div class="mb-3">`;
                 html += `<h6>ファイル ${item.file_index + 1}: ${item.filename}</h6>`;
-                html += `<pre class="result-content">${formatJSON(item.result)}</pre>`;
+                html += formatResultData(item.result);
                 html += `</div>`;
             });
             resultContent.innerHTML = html;

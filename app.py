@@ -241,7 +241,16 @@ def send_to_dify(file_obj, filename, max_retries=None):
             )
             
             print(f"DEBUG: Workflow response status: {workflow_response.status_code}")
-            if workflow_response.status_code != 200:
+            if workflow_response.status_code == 504:
+                print(f"DEBUG: Gateway timeout (504) - API server overloaded")
+                if attempt < max_retries:
+                    print(f"DEBUG: Retrying {filename} due to 504 timeout in {10 + attempt * 5} seconds...")
+                    time.sleep(10 + attempt * 5)  # Exponential backoff for 504 errors
+                    file_obj.seek(0)
+                    continue
+                else:
+                    return {'error': f'Dify APIサーバーがタイムアウトしました (504エラー、最大{max_retries + 1}回試行)'}
+            elif workflow_response.status_code != 200:
                 print(f"DEBUG: Workflow response content: {workflow_response.text}")
                 return {'error': f'Difyワークフロー実行エラー: {workflow_response.status_code}'}
             
@@ -251,7 +260,9 @@ def send_to_dify(file_obj, filename, max_retries=None):
             if 'data' in workflow_result and 'outputs' in workflow_result['data']:
                 result_data = workflow_result['data']['outputs']
                 print(f"DEBUG: Extracted result data: {result_data}")
-                return result_data
+                
+                processed_data = process_dify_response(result_data)
+                return processed_data
             else:
                 print(f"DEBUG: No outputs found in workflow result")
                 return {'error': 'Difyワークフローの実行に失敗しました'}
@@ -271,6 +282,56 @@ def send_to_dify(file_obj, filename, max_retries=None):
         except Exception as e:
             print(f"DEBUG: General error for {filename}: {str(e)}")
             return {'error': f'データ取得中にエラーが発生しました: {str(e)}'}
+
+def process_dify_response(result_data):
+    """Process Dify API response and extract structured data from various formats"""
+    print(f"DEBUG: Processing Dify response: {result_data}")
+    
+    if isinstance(result_data, dict) and 'text' not in result_data:
+        print("DEBUG: Response is already structured, returning as-is")
+        return result_data
+    
+    text_content = ""
+    if isinstance(result_data, dict) and 'text' in result_data:
+        text_content = result_data['text']
+    elif isinstance(result_data, str):
+        text_content = result_data
+    else:
+        print(f"DEBUG: Unexpected response format: {type(result_data)}")
+        return result_data
+    
+    print(f"DEBUG: Extracted text content: {text_content[:200]}...")
+    
+    import re
+    
+    json_pattern1 = r'```json\s*\n(.*?)\n```'
+    match1 = re.search(json_pattern1, text_content, re.DOTALL)
+    
+    json_pattern2 = r'```\s*\n(.*?)\n```'
+    match2 = re.search(json_pattern2, text_content, re.DOTALL)
+    
+    json_text = None
+    if match1:
+        json_text = match1.group(1).strip()
+        print("DEBUG: Found JSON in markdown code block (with json specifier)")
+    elif match2:
+        json_text = match2.group(1).strip()
+        print("DEBUG: Found JSON in markdown code block (without specifier)")
+    else:
+        json_text = text_content.strip()
+        print("DEBUG: Attempting to parse entire text as JSON")
+    
+    if json_text:
+        try:
+            import json
+            parsed_data = json.loads(json_text)
+            print(f"DEBUG: Successfully parsed JSON data: {type(parsed_data)}")
+            return {'extracted_data': parsed_data, 'raw_text': text_content}
+        except json.JSONDecodeError as e:
+            print(f"DEBUG: JSON parsing failed: {e}")
+    
+    print("DEBUG: Returning original text content as fallback")
+    return {'text': text_content, 'parsing_note': 'Could not extract structured data'}
 
 def process_files_sequential(valid_files, session_id):
     """Process files one by one in background thread"""
@@ -295,10 +356,11 @@ def process_files_sequential(valid_files, session_id):
                     if 'error' in result:
                         session['errors'].append(f'{filename}: {result["error"]}')
                     else:
+                        processed_result = process_dify_response(result)
                         session['results'].append({
                             'filename': filename,
                             'file_index': i,
-                            'result': result,
+                            'result': processed_result,
                             'completed_at': time.time()
                         })
                     
