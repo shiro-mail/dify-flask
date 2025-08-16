@@ -232,11 +232,28 @@ body {
 
 .file-progress-item .file-status {
     font-size: 0.85rem;
-    min-width: 120px;
+    min-width: 200px;
     text-align: right;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
 }
 
 .file-progress-item.failed {
     background-color: #f8d7da;
     border-left: 3px solid #dc3545;
+}
+
+.retry-btn {
+    font-size: 0.75rem;
+    padding: 2px 8px;
+    margin-left: 8px;
+    border-radius: 4px;
+    transition: all 0.2s ease;
+}
+
+.retry-btn:hover {
+    background-color: #007bff;
+    color: white;
+    transform: translateY(-1px);
 }

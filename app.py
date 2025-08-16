@@ -158,7 +158,8 @@ def analyze_images_sequential():
                 'errors': errors,
                 'status': 'processing',
                 'created_at': time.time(),
-                'current_processing': None
+                'current_processing': None,
+                'original_files': valid_files
             }
         
         import threading
@@ -564,6 +565,86 @@ def cleanup_session(session_id):
                 
     except Exception as e:
         return jsonify({'error': f'Cleanup error: {str(e)}'}), 500
+
+@app.route('/api/dify/session/<session_id>/retry/<int:file_index>', methods=['POST'])
+def retry_file(session_id, file_index):
+    """Retry processing for a specific failed file"""
+    try:
+        with session_lock:
+            if session_id not in processing_sessions:
+                return jsonify({'error': 'Session not found'}), 404
+            
+            session = processing_sessions[session_id]
+            
+            if file_index >= len(session.get('original_files', [])):
+                return jsonify({'error': 'File index out of range'}), 400
+            
+            failed_result = None
+            for result in session['results']:
+                if result['file_index'] == file_index and result['failed']:
+                    failed_result = result
+                    break
+            
+            if not failed_result:
+                return jsonify({'error': 'File not found or not failed'}), 400
+            
+            original_file = session['original_files'][file_index]
+            filename = original_file['filename']
+            file_data = original_file['file_data']
+            
+            session['results'] = [r for r in session['results'] if not (r['file_index'] == file_index and r['failed'])]
+            
+            session['current_processing'] = {
+                'file_index': file_index,
+                'filename': filename,
+                'started_at': time.time(),
+                'current_attempt': 0
+            }
+        
+        import threading
+        from io import BytesIO
+        
+        def retry_file_processing():
+            file_obj = BytesIO(file_data)
+            result = send_to_dify_with_progress(file_obj, filename, session_id, file_index)
+            
+            with session_lock:
+                if session_id in processing_sessions:
+                    session = processing_sessions[session_id]
+                    elapsed_time = time.time() - session['current_processing']['started_at']
+                    session['current_processing'] = None
+                    
+                    if 'error' in result:
+                        session['errors'].append(f'{filename}: {result["error"]}')
+                        session['results'].append({
+                            'filename': filename,
+                            'file_index': file_index,
+                            'result': result,
+                            'failed': True,
+                            'completed_at': time.time(),
+                            'elapsed_seconds': round(elapsed_time, 1)
+                        })
+                    else:
+                        session['results'].append({
+                            'filename': filename,
+                            'file_index': file_index,
+                            'result': result,
+                            'failed': False,
+                            'completed_at': time.time(),
+                            'elapsed_seconds': round(elapsed_time, 1)
+                        })
+        
+        thread = threading.Thread(target=retry_file_processing)
+        thread.daemon = True
+        thread.start()
+        
+        return jsonify({
+            'success': True,
+            'message': f'Retry started for {filename}'
+        })
+        
+    except Exception as e:
+        return jsonify({'error': f'Retry error: {str(e)}'}), 500
 
 @app.route('/about')
 def about():
