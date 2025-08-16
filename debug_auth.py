@@ -17,24 +17,21 @@ print(f"API Key type: {type(api_key)}")
 print(f"Workflow ID: {workflow_id}")
 
 if api_key:
-    print("\n=== Testing API Key Validity ===")
+    print("\\n=== Testing API Key Validity ===")
     try:
         test_url = f"{api_base}/v1/workflows/run"
         headers = {
             'Authorization': f'Bearer {api_key}',
             'Content-Type': 'application/json'
         }
-        
         test_payload = {
             "inputs": {},
             "response_mode": "blocking",
             "user": "test-user"
         }
-        
         response = requests.post(test_url, headers=headers, json=test_payload, timeout=10)
         print(f"Test API call status: {response.status_code}")
         print(f"Test API call response: {response.text[:200]}...")
-        
         if response.status_code == 401:
             print("❌ API KEY IS INVALID OR EXPIRED!")
         elif response.status_code == 400:
@@ -43,14 +40,13 @@ if api_key:
             print("✅ API key is valid and request succeeded")
         else:
             print(f"⚠️  Unexpected status code: {response.status_code}")
-            
     except Exception as e:
         print(f"❌ Error testing API key: {str(e)}")
 else:
     print("❌ No API key found!")
 
-print("\n=== Environment File Check ===")
-env_file_path = "/home/ubuntu/repos/dify-flask/.env"
+print("\\n=== Environment File Check ===")
+env_file_path = ".env"
 if os.path.exists(env_file_path):
     print("✅ .env file exists")
     with open(env_file_path, 'r') as f:
@@ -62,3 +58,5 @@ if os.path.exists(env_file_path):
             print("❌ DIFY_API_KEY not found in .env file")
 else:
     print("❌ .env file does not exist")
+    print(f"Current working directory: {os.getcwd()}")
+    print(f"Files in current directory: {os.listdir('.')}")
