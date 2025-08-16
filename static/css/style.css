@@ -225,6 +225,17 @@ body {
     text-decoration: line-through;
 }
 
+.file-progress-item.processing {
+    background-color: #e3f2fd;
+    border-left: 3px solid #007bff;
+}
+
+.file-progress-item .file-status {
+    font-size: 0.85rem;
+    min-width: 120px;
+    text-align: right;
+}
+
 .file-progress-item.failed {
     background-color: #f8d7da;
     border-left: 3px solid #dc3545;

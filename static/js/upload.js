@@ -244,6 +244,9 @@ onDOMReady(() => {
                     throw new Error(data.error || 'Status check failed');
                 }
                 
+                if (data.current_processing) {
+                    updateCurrentProcessingStatus(data.current_processing);
+                }
                 
                 if (data.new_results && data.new_results.length > 0) {
                     allResults = allResults.concat(data.new_results);
@@ -334,5 +337,22 @@ onDOMReady(() => {
                 }
             }
         });
+    }
+    
+    function updateCurrentProcessingStatus(processingInfo) {
+        if (!fileProgressList || !processingInfo) return;
+        
+        const fileItem = fileProgressList.querySelector(`[data-file-index="${processingInfo.file_index}"]`);
+        if (fileItem) {
+            const statusElement = fileItem.querySelector('.file-status');
+            if (statusElement) {
+                const attemptText = `${processingInfo.current_attempt}回目分析中`;
+                const elapsedText = `(${processingInfo.elapsed_seconds}秒)`;
+                statusElement.innerHTML = `🔄 ${attemptText} ${elapsedText}`;
+                statusElement.style.color = '#007bff';
+                fileItem.classList.add('processing');
+                fileItem.classList.remove('completed', 'failed');
+            }
+        }
     }
 });
