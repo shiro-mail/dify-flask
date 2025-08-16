@@ -172,3 +172,50 @@ body {
         padding: 20px;
     }
 }
+
+/* File Progress Area Styles */
+#fileProgressArea .card {
+    border: 1px solid #dee2e6;
+    background-color: #f8f9fa;
+}
+
+#fileProgressArea .card-header {
+    background-color: #e9ecef;
+    color: #495057;
+    font-weight: 500;
+    border-bottom: 1px solid #dee2e6;
+}
+
+.file-progress-item {
+    display: flex;
+    align-items: center;
+    padding: 8px 12px;
+    border-bottom: 1px solid #e9ecef;
+    background-color: #ffffff;
+}
+
+.file-progress-item:last-child {
+    border-bottom: none;
+}
+
+.file-progress-item .file-name {
+    flex: 1;
+    font-size: 0.9rem;
+    color: #495057;
+    margin-right: 10px;
+}
+
+.file-progress-item .file-status {
+    font-size: 1rem;
+    width: 20px;
+    text-align: center;
+}
+
+.file-progress-item.completed .file-name {
+    color: #28a745;
+}
+
+.file-progress-item.processing .file-name {
+    color: #007bff;
+    font-weight: 500;
+}

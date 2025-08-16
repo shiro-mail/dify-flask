@@ -6,6 +6,8 @@ onDOMReady(() => {
     const errorArea = document.getElementById('errorArea');
     const resultContent = document.getElementById('resultContent');
     const errorContent = document.getElementById('errorContent');
+    const fileProgressArea = document.getElementById('fileProgressArea');
+    const fileProgressList = document.getElementById('fileProgressList');
     
     const fileUploadArea = document.querySelector('.file-upload-area');
     if (fileUploadArea && fileInput) {
@@ -50,6 +52,15 @@ onDOMReady(() => {
         return;
     }
     
+    const useSequential = document.getElementById('useSequential');
+    if (useSequential) {
+        useSequential.addEventListener('change', () => {
+            if (fileInput.files.length > 0) {
+                displayFileList(fileInput.files);
+            }
+        });
+    }
+    
     fileInput.addEventListener('change', (e) => {
         const files = e.target.files;
         if (files.length > 0) {
@@ -76,6 +87,8 @@ onDOMReady(() => {
             }
             
             showMessage(`${validFiles}個のファイルを選択 (合計: ${formatFileSize(totalSize)})`, 'success');
+            
+            displayFileList(files);
         }
     });
     
@@ -274,5 +287,46 @@ onDOMReady(() => {
         }
         showElement(resultArea);
         hideElement(errorArea);
+        
+        updateFileProgress(results);
+    }
+    
+    function displayFileList(files) {
+        if (!fileProgressList || !fileProgressArea) return;
+        
+        const useSequential = document.getElementById('useSequential');
+        if (!useSequential || !useSequential.checked) {
+            hideElement(fileProgressArea);
+            return;
+        }
+        
+        let html = '';
+        for (let i = 0; i < files.length; i++) {
+            const file = files[i];
+            if (isValidPNGFile(file) && file.size <= 16 * 1024 * 1024) {
+                html += `<div class="file-progress-item" data-file-index="${i}">`;
+                html += `<span class="file-name">${file.name}</span>`;
+                html += `<span class="file-status">⏳</span>`;
+                html += `</div>`;
+            }
+        }
+        
+        fileProgressList.innerHTML = html;
+        showElement(fileProgressArea);
+    }
+    
+    function updateFileProgress(results) {
+        if (!fileProgressList) return;
+        
+        results.forEach(result => {
+            const fileItem = fileProgressList.querySelector(`[data-file-index="${result.file_index}"]`);
+            if (fileItem) {
+                const statusElement = fileItem.querySelector('.file-status');
+                if (statusElement) {
+                    statusElement.innerHTML = '✅';
+                    fileItem.classList.add('completed');
+                }
+            }
+        });
     }
 });
