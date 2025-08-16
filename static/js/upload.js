@@ -9,6 +9,12 @@ onDOMReady(() => {
     const fileProgressArea = document.getElementById('fileProgressArea');
     const fileProgressList = document.getElementById('fileProgressList');
     
+    let currentSessionId = null;
+    
+    function getCurrentSessionId() {
+        return currentSessionId;
+    }
+    
     const fileUploadArea = document.querySelector('.file-upload-area');
     if (fileUploadArea && fileInput) {
         fileUploadArea.addEventListener('click', () => {
@@ -232,6 +238,7 @@ onDOMReady(() => {
     }
     
     function startPollingForResults(sessionId, totalFiles) {
+        currentSessionId = sessionId;
         let lastResultCount = 0;
         let allResults = [];
         
@@ -328,15 +335,22 @@ onDOMReady(() => {
                 if (statusElement) {
                     const elapsedText = result.elapsed_seconds ? ` (${result.elapsed_seconds}秒)` : '';
                     if (result.failed) {
-                        statusElement.innerHTML = `❌${elapsedText}`;
+                        statusElement.innerHTML = `❌${elapsedText} <button class="btn btn-sm btn-outline-primary retry-btn" data-file-index="${result.file_index}">リトライ</button>`;
                         statusElement.style.color = '#dc3545';
                         fileItem.classList.add('failed');
+                        fileItem.classList.remove('completed', 'processing');
                     } else {
                         statusElement.innerHTML = `✅${elapsedText}`;
+                        statusElement.style.color = '#28a745';
                         fileItem.classList.add('completed');
+                        fileItem.classList.remove('failed', 'processing');
                     }
                 }
             }
+        });
+        
+        document.querySelectorAll('.retry-btn').forEach(btn => {
+            btn.addEventListener('click', handleRetryClick);
         });
     }
     
@@ -352,6 +366,55 @@ onDOMReady(() => {
                 statusElement.style.color = '#007bff';
                 fileItem.classList.add('processing');
                 fileItem.classList.remove('completed', 'failed');
+            }
+        }
+    }
+    
+    async function handleRetryClick(event) {
+        event.preventDefault();
+        const fileIndex = event.target.getAttribute('data-file-index');
+        const sessionId = getCurrentSessionId();
+        
+        if (!sessionId) {
+            console.error('No active session for retry');
+            return;
+        }
+        
+        try {
+            const fileItem = fileProgressList.querySelector(`[data-file-index="${fileIndex}"]`);
+            if (fileItem) {
+                const statusElement = fileItem.querySelector('.file-status');
+                statusElement.innerHTML = '🔄 リトライ中...';
+                statusElement.style.color = '#007bff';
+                fileItem.classList.remove('failed');
+                fileItem.classList.add('processing');
+            }
+            
+            const response = await fetch(`/api/dify/session/${sessionId}/retry/${fileIndex}`, {
+                method: 'POST'
+            });
+            
+            const result = await response.json();
+            
+            if (!response.ok) {
+                throw new Error(result.error || 'Retry failed');
+            }
+            
+            console.log('Retry started successfully:', result.message);
+            
+        } catch (error) {
+            console.error('Retry error:', error);
+            const fileItem = fileProgressList.querySelector(`[data-file-index="${fileIndex}"]`);
+            if (fileItem) {
+                const statusElement = fileItem.querySelector('.file-status');
+                statusElement.innerHTML = `❌ <button class="btn btn-sm btn-outline-primary retry-btn" data-file-index="${fileIndex}">リトライ</button>`;
+                statusElement.style.color = '#dc3545';
+                fileItem.classList.add('failed');
+                fileItem.classList.remove('processing');
+                
+                document.querySelectorAll('.retry-btn').forEach(btn => {
+                    btn.addEventListener('click', handleRetryClick);
+                });
             }
         }
     }
