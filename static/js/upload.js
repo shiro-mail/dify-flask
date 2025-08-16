@@ -8,6 +8,8 @@ onDOMReady(() => {
     const errorContent = document.getElementById('errorContent');
     const fileProgressArea = document.getElementById('fileProgressArea');
     const fileProgressList = document.getElementById('fileProgressList');
+    const retryButtonArea = document.getElementById('retryButtonArea');
+    const retryFailedBtn = document.getElementById('retryFailedBtn');
     
     let currentSessionId = null;
     
@@ -265,12 +267,16 @@ onDOMReady(() => {
                     clearInterval(pollInterval);
                     setButtonLoading(analyzeBtn, false);
                     
+                    checkRetryButtonVisibility(allResults, true);
+                    
                     if (data.errors && data.errors.length > 0) {
                         console.warn('Processing errors:', data.errors);
                     }
                     
-                    fetch(`/api/dify/session/${sessionId}/cleanup`, { method: 'DELETE' })
-                        .catch(err => console.warn('Cleanup failed:', err));
+                    if (!allResults.some(result => result.failed)) {
+                        fetch(`/api/dify/session/${sessionId}/cleanup`, { method: 'DELETE' })
+                            .catch(err => console.warn('Cleanup failed:', err));
+                    }
                 }
                 
             } catch (error) {
@@ -299,6 +305,8 @@ onDOMReady(() => {
         hideElement(errorArea);
         
         updateFileProgress(results);
+        
+        checkRetryButtonVisibility(results, false);
     }
     
     function displayFileList(files) {
@@ -335,7 +343,7 @@ onDOMReady(() => {
                 if (statusElement) {
                     const elapsedText = result.elapsed_seconds ? ` (${result.elapsed_seconds}秒)` : '';
                     if (result.failed) {
-                        statusElement.innerHTML = `❌${elapsedText} <button class="btn btn-sm btn-outline-primary retry-btn" data-file-index="${result.file_index}">リトライ</button>`;
+                        statusElement.innerHTML = `❌${elapsedText}`;
                         statusElement.style.color = '#dc3545';
                         fileItem.classList.add('failed');
                         fileItem.classList.remove('completed', 'processing');
@@ -347,10 +355,6 @@ onDOMReady(() => {
                     }
                 }
             }
-        });
-        
-        document.querySelectorAll('.retry-btn').forEach(btn => {
-            btn.addEventListener('click', handleRetryClick);
         });
     }
     
@@ -370,9 +374,18 @@ onDOMReady(() => {
         }
     }
     
-    async function handleRetryClick(event) {
+    function checkRetryButtonVisibility(allResults, isCompleted) {
+        if (!retryButtonArea || !retryFailedBtn) return;
+        
+        if (isCompleted && allResults.some(result => result.failed)) {
+            showElement(retryButtonArea);
+        } else {
+            hideElement(retryButtonArea);
+        }
+    }
+    
+    async function handleRetryFailedClick(event) {
         event.preventDefault();
-        const fileIndex = event.target.getAttribute('data-file-index');
         const sessionId = getCurrentSessionId();
         
         if (!sessionId) {
@@ -381,41 +394,29 @@ onDOMReady(() => {
         }
         
         try {
-            const fileItem = fileProgressList.querySelector(`[data-file-index="${fileIndex}"]`);
-            if (fileItem) {
-                const statusElement = fileItem.querySelector('.file-status');
-                statusElement.innerHTML = '🔄 リトライ中...';
-                statusElement.style.color = '#007bff';
-                fileItem.classList.remove('failed');
-                fileItem.classList.add('processing');
-            }
+            hideElement(retryButtonArea);
             
-            const response = await fetch(`/api/dify/session/${sessionId}/retry/${fileIndex}`, {
+            const response = await fetch(`/api/dify/session/${sessionId}/retry-failed`, {
                 method: 'POST'
             });
             
             const result = await response.json();
             
             if (!response.ok) {
-                throw new Error(result.error || 'Retry failed');
+                throw new Error(result.error || 'Batch retry failed');
             }
             
-            console.log('Retry started successfully:', result.message);
+            console.log('Batch retry started successfully:', result.message);
+            
+            startPollingForResults(sessionId, 0);
             
         } catch (error) {
-            console.error('Retry error:', error);
-            const fileItem = fileProgressList.querySelector(`[data-file-index="${fileIndex}"]`);
-            if (fileItem) {
-                const statusElement = fileItem.querySelector('.file-status');
-                statusElement.innerHTML = `❌ <button class="btn btn-sm btn-outline-primary retry-btn" data-file-index="${fileIndex}">リトライ</button>`;
-                statusElement.style.color = '#dc3545';
-                fileItem.classList.add('failed');
-                fileItem.classList.remove('processing');
-                
-                document.querySelectorAll('.retry-btn').forEach(btn => {
-                    btn.addEventListener('click', handleRetryClick);
-                });
-            }
+            console.error('Batch retry error:', error);
+            showElement(retryButtonArea);
         }
+    }
+    
+    if (retryFailedBtn) {
+        retryFailedBtn.addEventListener('click', handleRetryFailedClick);
     }
 });
