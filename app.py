@@ -4,6 +4,7 @@ import os
 import uuid
 import time
 import json
+import re
 from io import BytesIO
 from werkzeug.utils import secure_filename
 from threading import Lock
@@ -177,8 +178,41 @@ def analyze_images_sequential():
     except Exception as e:
         return jsonify({'error': f'エラーが発生しました: {str(e)}'}), 500
 
-def send_to_dify(file_obj, filename):
-    """Send file to Dify API using two-step process: upload then workflow execution"""
+def is_valid_json_response(result_data):
+    """Check if the result contains valid JSON data"""
+    if not result_data:
+        return False
+    
+    if 'extracted_data' in result_data:
+        extracted = result_data['extracted_data']
+        if isinstance(extracted, (dict, list)) and extracted:
+            return True
+    
+    if 'text' in result_data:
+        text_content = result_data['text']
+        if isinstance(text_content, str):
+            if '```json' in text_content:
+                json_match = re.search(r'```json\s*\n(.*?)\n```', text_content, re.DOTALL)
+                if json_match:
+                    try:
+                        json.loads(json_match.group(1))
+                        return True
+                    except:
+                        pass
+            
+            text_content = text_content.strip()
+            if text_content.startswith('[{') and text_content.endswith('}]'):
+                try:
+                    json.loads(text_content)
+                    return True
+                except:
+                    pass
+    
+    return False
+
+def send_to_dify(file_obj, filename, max_retries=3):
+    """Send file to Dify API using two-step process: upload then workflow execution with retry logic"""
+    
     try:
         print(f"DEBUG: Starting Dify API call for {filename}")
         
@@ -210,54 +244,106 @@ def send_to_dify(file_obj, filename):
         if not file_id:
             return {'error': 'ファイルアップロードからIDを取得できませんでした'}
         
-        workflow_payload = {
-            "inputs": {
-                "input_file": {
-                    "type": "image",
-                    "transfer_method": "local_file", 
-                    "upload_file_id": file_id
-                }
-            },
-            "response_mode": "blocking",
-            "user": "dify-flask-app"
-        }
-        
-        print(f"DEBUG: Executing workflow with payload: {json.dumps(workflow_payload, indent=2)}")
-        workflow_response = requests.post(
-            f"{DIFY_API_BASE_URL}/v1/workflows/run",
-            headers={
-                'Authorization': f'Bearer {DIFY_API_KEY}',
-                'Content-Type': 'application/json'
-            },
-            json=workflow_payload,
-            timeout=(30, 300)
-        )
-        
-        print(f"DEBUG: Workflow response status: {workflow_response.status_code}")
-        if workflow_response.status_code != 200:
-            print(f"DEBUG: Workflow response content: {workflow_response.text}")
-            return {'error': f'Difyワークフロー実行エラー: {workflow_response.status_code}'}
-        
-        workflow_result = workflow_response.json()
-        print(f"DEBUG: Workflow result: {workflow_result}")
-        
-        if 'data' in workflow_result and 'outputs' in workflow_result['data']:
-            result_data = workflow_result['data']['outputs']
-            print(f"DEBUG: Extracted result data: {result_data}")
-            return result_data
-        else:
-            print(f"DEBUG: No outputs found in workflow result")
-            return {'error': 'Difyワークフローの実行に失敗しました'}
-            
     except requests.exceptions.Timeout:
-        print(f"DEBUG: Timeout error for {filename}")
-        return {'error': 'Dify APIのタイムアウトが発生しました'}
+        print(f"DEBUG: Upload timeout error for {filename}")
+        return {'error': 'Dify APIアップロードのタイムアウトが発生しました'}
     except requests.exceptions.RequestException as e:
-        print(f"DEBUG: Request error for {filename}: {str(e)}")
-        return {'error': f'Dify API接続エラー: {str(e)}'}
+        print(f"DEBUG: Upload request error for {filename}: {str(e)}")
+        return {'error': f'Dify APIアップロード接続エラー: {str(e)}'}
     except Exception as e:
-        print(f"DEBUG: General error for {filename}: {str(e)}")
-        return {'error': f'データ取得中にエラーが発生しました: {str(e)}'}
+        print(f"DEBUG: Upload general error for {filename}: {str(e)}")
+        return {'error': f'ファイルアップロード中にエラーが発生しました: {str(e)}'}
+    
+    for attempt in range(1, max_retries + 1):
+        try:
+            print(f"DEBUG: Workflow execution attempt {attempt}/{max_retries} for {filename}")
+            
+            workflow_payload = {
+                "inputs": {
+                    "input_file": {
+                        "type": "image",
+                        "transfer_method": "local_file", 
+                        "upload_file_id": file_id
+                    }
+                },
+                "response_mode": "blocking",
+                "user": "dify-flask-app"
+            }
+            
+            print(f"DEBUG: Executing workflow with payload: {json.dumps(workflow_payload, indent=2)}")
+            workflow_response = requests.post(
+                f"{DIFY_API_BASE_URL}/v1/workflows/run",
+                headers={
+                    'Authorization': f'Bearer {DIFY_API_KEY}',
+                    'Content-Type': 'application/json'
+                },
+                json=workflow_payload,
+                timeout=(30, 300)
+            )
+            
+            print(f"DEBUG: Workflow response status: {workflow_response.status_code}")
+            if workflow_response.status_code != 200:
+                print(f"DEBUG: Workflow response content: {workflow_response.text}")
+                if attempt == max_retries:
+                    return {'error': f'Difyワークフロー実行エラー: {workflow_response.status_code} (最大{max_retries}回試行後)'}
+                else:
+                    print(f"DEBUG: Retrying workflow execution for {filename} (attempt {attempt + 1})")
+                    time.sleep(2)  # Wait 2 seconds before retry
+                    continue
+            
+            workflow_result = workflow_response.json()
+            print(f"DEBUG: Workflow result: {workflow_result}")
+            
+            if 'data' in workflow_result and 'outputs' in workflow_result['data']:
+                result_data = workflow_result['data']['outputs']
+                print(f"DEBUG: Extracted result data: {result_data}")
+                
+                if is_valid_json_response(result_data):
+                    print(f"DEBUG: Valid JSON response received for {filename} on attempt {attempt}")
+                    return result_data
+                else:
+                    print(f"DEBUG: Invalid JSON response for {filename} on attempt {attempt}")
+                    if attempt == max_retries:
+                        return {'error': f'有効なJSONデータが取得できませんでした (最大{max_retries}回試行後)'}
+                    else:
+                        print(f"DEBUG: Retrying for valid JSON response for {filename} (attempt {attempt + 1})")
+                        time.sleep(2)  # Wait 2 seconds before retry
+                        continue
+            else:
+                print(f"DEBUG: No outputs found in workflow result for {filename} on attempt {attempt}")
+                if attempt == max_retries:
+                    return {'error': f'Difyワークフローの実行に失敗しました (最大{max_retries}回試行後)'}
+                else:
+                    print(f"DEBUG: Retrying workflow execution for {filename} (attempt {attempt + 1})")
+                    time.sleep(2)  # Wait 2 seconds before retry
+                    continue
+                    
+        except requests.exceptions.Timeout:
+            print(f"DEBUG: Workflow timeout error for {filename} on attempt {attempt}")
+            if attempt == max_retries:
+                return {'error': f'Dify APIワークフローのタイムアウトが発生しました (最大{max_retries}回試行後)'}
+            else:
+                print(f"DEBUG: Retrying after timeout for {filename} (attempt {attempt + 1})")
+                time.sleep(2)
+                continue
+        except requests.exceptions.RequestException as e:
+            print(f"DEBUG: Workflow request error for {filename} on attempt {attempt}: {str(e)}")
+            if attempt == max_retries:
+                return {'error': f'Dify APIワークフロー接続エラー: {str(e)} (最大{max_retries}回試行後)'}
+            else:
+                print(f"DEBUG: Retrying after request error for {filename} (attempt {attempt + 1})")
+                time.sleep(2)
+                continue
+        except Exception as e:
+            print(f"DEBUG: Workflow general error for {filename} on attempt {attempt}: {str(e)}")
+            if attempt == max_retries:
+                return {'error': f'ワークフロー実行中にエラーが発生しました: {str(e)} (最大{max_retries}回試行後)'}
+            else:
+                print(f"DEBUG: Retrying after general error for {filename} (attempt {attempt + 1})")
+                time.sleep(2)
+                continue
+    
+    return {'error': f'予期しないエラーが発生しました (最大{max_retries}回試行後)'}
 
 def process_files_sequential(valid_files, session_id):
     """Process files one by one in background thread"""
@@ -281,11 +367,19 @@ def process_files_sequential(valid_files, session_id):
                     
                     if 'error' in result:
                         session['errors'].append(f'{filename}: {result["error"]}')
+                        session['results'].append({
+                            'filename': filename,
+                            'file_index': i,
+                            'result': result,
+                            'failed': True,
+                            'completed_at': time.time()
+                        })
                     else:
                         session['results'].append({
                             'filename': filename,
                             'file_index': i,
                             'result': result,
+                            'failed': False,
                             'completed_at': time.time()
                         })
                     
@@ -297,6 +391,13 @@ def process_files_sequential(valid_files, session_id):
             with session_lock:
                 if session_id in processing_sessions:
                     processing_sessions[session_id]['errors'].append(f'{filename}: {str(e)}')
+                    processing_sessions[session_id]['results'].append({
+                        'filename': filename,
+                        'file_index': i,
+                        'result': {'error': str(e)},
+                        'failed': True,
+                        'completed_at': time.time()
+                    })
                     processing_sessions[session_id]['processed_files'] += 1
     
     with session_lock:
