@@ -229,7 +229,8 @@ def send_to_dify(file_obj, filename, max_retries=None):
                 "user": "dify-flask-app"
             }
             
-            print(f"DEBUG: Executing workflow...")
+            print(f"DEBUG: Executing workflow for file: {filename}")
+            print(f"DEBUG: Workflow payload: {json.dumps(workflow_payload, indent=2)}")
             workflow_response = requests.post(
                 f"{DIFY_API_BASE_URL}/v1/workflows/run",
                 headers={
@@ -237,7 +238,7 @@ def send_to_dify(file_obj, filename, max_retries=None):
                     'Content-Type': 'application/json'
                 },
                 json=workflow_payload,
-                timeout=DIFY_WORKFLOW_TIMEOUT
+                timeout=(30, DIFY_WORKFLOW_TIMEOUT)  # (connection_timeout, read_timeout)
             )
             
             print(f"DEBUG: Workflow response status: {workflow_response.status_code}")
@@ -285,10 +286,19 @@ def send_to_dify(file_obj, filename, max_retries=None):
 
 def is_valid_json_response(response_data):
     """Check if Dify response contains structured data vs plain text error"""
-    if not response_data or 'text' not in response_data:
+    if not response_data:
         return False
     
+    if isinstance(response_data, dict) and 'extracted_data' in response_data:
+        return True
+    
+    if 'text' not in response_data:
+        return isinstance(response_data, dict) and len(response_data) > 0
+    
     text_content = response_data['text'].strip()
+    
+    if not text_content:
+        return False
     
     error_indicators = [
         'error',
@@ -306,6 +316,7 @@ def is_valid_json_response(response_data):
         if any(indicator in text_lower for indicator in error_indicators):
             return False
     
+    # Check for structured data indicators
     structured_indicators = [
         '[{',  # JSON array start
         '```json',  # Markdown JSON block
