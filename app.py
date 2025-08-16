@@ -461,6 +461,7 @@ def process_files_sequential(valid_files, session_id):
                 if session_id in processing_sessions:
                     session = processing_sessions[session_id]
                     
+                    elapsed_time = time.time() - session['current_processing']['started_at']
                     session['current_processing'] = None
                     
                     if 'error' in result:
@@ -470,7 +471,8 @@ def process_files_sequential(valid_files, session_id):
                             'file_index': i,
                             'result': result,
                             'failed': True,
-                            'completed_at': time.time()
+                            'completed_at': time.time(),
+                            'elapsed_seconds': round(elapsed_time, 1)
                         })
                     else:
                         session['results'].append({
@@ -478,7 +480,8 @@ def process_files_sequential(valid_files, session_id):
                             'file_index': i,
                             'result': result,
                             'failed': False,
-                            'completed_at': time.time()
+                            'completed_at': time.time(),
+                            'elapsed_seconds': round(elapsed_time, 1)
                         })
                     
                     session['processed_files'] += 1
@@ -488,6 +491,7 @@ def process_files_sequential(valid_files, session_id):
             print(f"DEBUG: Error processing {filename}: {str(e)}")
             with session_lock:
                 if session_id in processing_sessions:
+                    elapsed_time = time.time() - processing_sessions[session_id]['current_processing']['started_at']
                     processing_sessions[session_id]['current_processing'] = None
                     processing_sessions[session_id]['errors'].append(f'{filename}: {str(e)}')
                     processing_sessions[session_id]['results'].append({
@@ -495,7 +499,8 @@ def process_files_sequential(valid_files, session_id):
                         'file_index': i,
                         'result': {'error': str(e)},
                         'failed': True,
-                        'completed_at': time.time()
+                        'completed_at': time.time(),
+                        'elapsed_seconds': round(elapsed_time, 1)
                     })
                     processing_sessions[session_id]['processed_files'] += 1
     
