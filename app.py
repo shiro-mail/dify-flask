@@ -219,17 +219,20 @@ def send_to_dify(file_obj, filename, max_retries=None):
             
             workflow_payload = {
                 "inputs": {
-                    "input_file": {
-                        "type": "image",
-                        "transfer_method": "local_file", 
-                        "upload_file_id": file_id
-                    }
+                    "input_file": [
+                        {
+                            "type": "image",
+                            "transfer_method": "local_file", 
+                            "upload_file_id": file_id
+                        }
+                    ]
                 },
                 "response_mode": "blocking",
                 "user": "dify-flask-app"
             }
             
-            print(f"DEBUG: Executing workflow...")
+            print(f"DEBUG: Executing workflow for file: {filename}")
+            print(f"DEBUG: Workflow payload: {json.dumps(workflow_payload, indent=2)}")
             workflow_response = requests.post(
                 f"{DIFY_API_BASE_URL}/v1/workflows/run",
                 headers={
@@ -237,7 +240,7 @@ def send_to_dify(file_obj, filename, max_retries=None):
                     'Content-Type': 'application/json'
                 },
                 json=workflow_payload,
-                timeout=DIFY_WORKFLOW_TIMEOUT
+                timeout=(30, DIFY_WORKFLOW_TIMEOUT)
             )
             
             print(f"DEBUG: Workflow response status: {workflow_response.status_code}")

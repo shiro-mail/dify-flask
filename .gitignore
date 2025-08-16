@@ -47,3 +47,9 @@ venv/
 .Trashes
 ehthumbs.db
 Thumbs.db
+
+# Confidential test files
+20250710.png
+20250710+2.png
+20250710+3.png
+*.png
