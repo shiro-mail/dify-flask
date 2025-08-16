@@ -38,8 +38,6 @@ onDOMReady(() => {
                     
                     const event = new Event('change', { bubbles: true });
                     fileInput.dispatchEvent(event);
-                } else {
-                    showMessage('PNGファイルのみ対応しています', 'error');
                 }
             }
         });
@@ -61,12 +59,10 @@ onDOMReady(() => {
             for (let i = 0; i < files.length; i++) {
                 const file = files[i];
                 if (!isValidPNGFile(file)) {
-                    showMessage(`${file.name} はPNGファイルではありません`, 'error');
                     continue;
                 }
                 
                 if (file.size > 16 * 1024 * 1024) {
-                    showMessage(`${file.name} のファイルサイズが16MBを超えています`, 'error');
                     continue;
                 }
                 
@@ -88,7 +84,6 @@ onDOMReady(() => {
         
         const files = fileInput.files;
         if (files.length === 0) {
-            showMessage('PNGファイルを選択してください', 'error');
             return;
         }
         
@@ -101,7 +96,6 @@ onDOMReady(() => {
         }
         
         if (validFiles.length === 0) {
-            showMessage('有効なPNGファイルがありません', 'error');
             return;
         }
         
@@ -115,7 +109,6 @@ onDOMReady(() => {
         
         try {
             setButtonLoading(analyzeBtn, true);
-            showMessage(`${validFiles.length}個の画像をDifyで分析中...`, 'info');
             
             const useSequential = document.getElementById('useSequential');
             if (useSequential && useSequential.checked) {
@@ -129,18 +122,15 @@ onDOMReady(() => {
                 const result = await response.json();
                 
                 if (response.ok && result.success) {
-                    showMessage('分析が完了しました！', 'success');
                     displayResult(result.results);
                 } else {
                     const errorMessage = result.error || '分析に失敗しました';
-                    showMessage(errorMessage, 'error');
                     displayError(errorMessage);
                 }
                 setButtonLoading(analyzeBtn, false);
             }
         } catch (error) {
             const errorMessage = '分析中にエラーが発生しました';
-            showMessage(errorMessage, 'error');
             displayError(errorMessage);
             console.error('Analysis error:', error);
             setButtonLoading(analyzeBtn, false);
@@ -214,17 +204,14 @@ onDOMReady(() => {
             const result = await response.json();
             
             if (response.ok && result.success) {
-                showMessage(`${result.total_files}個のファイルの処理を開始しました`, 'info');
                 startPollingForResults(result.session_id, result.total_files);
             } else {
                 const errorMessage = result.error || '処理開始に失敗しました';
-                showMessage(errorMessage, 'error');
                 displayError(errorMessage);
                 setButtonLoading(analyzeBtn, false);
             }
         } catch (error) {
             const errorMessage = '処理開始中にエラーが発生しました';
-            showMessage(errorMessage, 'error');
             displayError(errorMessage);
             console.error('Sequential processing error:', error);
             setButtonLoading(analyzeBtn, false);
@@ -244,7 +231,6 @@ onDOMReady(() => {
                     throw new Error(data.error || 'Status check failed');
                 }
                 
-                showMessage(`処理中: ${data.processed_files}/${data.total_files} 完了 (${data.progress_percentage}%) - 大きなファイルの場合、処理に時間がかかる場合があります`, 'info');
                 
                 if (data.new_results && data.new_results.length > 0) {
                     allResults = allResults.concat(data.new_results);
@@ -254,7 +240,6 @@ onDOMReady(() => {
                 
                 if (data.completed) {
                     clearInterval(pollInterval);
-                    showMessage('すべてのファイルの分析が完了しました！', 'success');
                     setButtonLoading(analyzeBtn, false);
                     
                     if (data.errors && data.errors.length > 0) {
@@ -268,7 +253,6 @@ onDOMReady(() => {
             } catch (error) {
                 clearInterval(pollInterval);
                 const errorMessage = 'ステータス確認中にエラーが発生しました';
-                showMessage(errorMessage, 'error');
                 displayError(errorMessage);
                 console.error('Polling error:', error);
                 setButtonLoading(analyzeBtn, false);
