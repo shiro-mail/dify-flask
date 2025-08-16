@@ -219,3 +219,13 @@ body {
     color: #007bff;
     font-weight: 500;
 }
+
+.file-progress-item.failed .file-name {
+    color: #dc3545;
+    text-decoration: line-through;
+}
+
+.file-progress-item.failed {
+    background-color: #f8d7da;
+    border-left: 3px solid #dc3545;
+}
