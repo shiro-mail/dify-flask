@@ -35,7 +35,6 @@
             <div class="row mb-3">
                 <div class="col-12">
                     <h2 class="h4">ファイル取込</h2>
-                    <p class="text-muted">画像ファイルをアップロードして分析を開始します</p>
                 </div>
             </div>
             
@@ -49,14 +48,15 @@
                         <div class="card-body">
                             <form id="uploadForm" enctype="multipart/form-data">
                                 <div class="mb-3">
-                                    <label for="imageFiles" class="form-label">PNG画像ファイルを選択してください</label>
-                                    <input type="file" class="form-control" id="imageFiles" name="files" multiple accept=".png" required>
-                                    <div class="form-text">複数のPNGファイルを選択できます（最大10ファイル）</div>
+                                    <label for="fileInput" class="form-label">PNG画像を選択してください（複数選択可能）</label>
+                                    <input type="file" class="form-control" id="fileInput" name="files" accept=".png" multiple required>
+                                    <div class="form-text">対応形式: PNG画像のみ（各ファイル最大16MB、複数選択可能）</div>
                                 </div>
-                                <div class="mb-3">
-                                    <button type="submit" class="btn btn-primary btn-lg" id="uploadBtn">
-                                        <span id="uploadBtnText">画像分析を開始</span>
-                                        <span id="uploadBtnSpinner" class="spinner-border spinner-border-sm d-none ms-2" role="status"></span>
+                                
+                                <div class="text-center">
+                                    <button type="submit" class="btn btn-primary btn-lg" id="analyzeBtn">
+                                        <span id="btnText">分析開始</span>
+                                        <span id="btnSpinner" class="spinner-border spinner-border-sm d-none ms-2" role="status"></span>
                                     </button>
                                 </div>
                             </form>
@@ -65,26 +65,46 @@
                 </div>
             </div>
             
-            <!-- 選択されたファイルの進捗表示エリア -->
-            <div class="row mb-4" id="selectedFilesArea" style="display: none;">
-                <div class="col-12">
-                    <div class="card">
-                        <div class="card-header">
-                            <h5 class="mb-0">選択されたファイル</h5>
-                        </div>
-                        <div class="card-body">
-                            <div id="selectedFilesContent">
-                                <!-- 選択されたファイルの進捗がここに表示されます -->
-                            </div>
+            <!-- 単一リトライボタン（全分析完了後、失敗がある場合のみ表示） -->
+            <div id="retryButtonArea" class="mb-3 text-center d-none">
+                <button type="button" class="btn btn-warning" id="retryFailedBtn">
+                    <i class="fas fa-redo"></i> 失敗したファイルをリトライ
+                </button>
+            </div>
+            
+            <!-- ファイル進捗表示エリア -->
+            <div id="fileProgressArea" class="mt-3 d-none">
+                <div class="card">
+                    <div class="card-header py-2">
+                        <h6 class="mb-0">選択されたファイル</h6>
+                    </div>
+                    <div class="card-body py-2">
+                        <div id="fileProgressList" class="list-group list-group-flush">
+                            <!-- ファイルリストがここに動的に追加されます -->
                         </div>
                     </div>
                 </div>
             </div>
             
-
+            <!-- 結果表示エリア -->
+            <div id="resultArea" class="mt-4 d-none">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">分析結果</h5>
+                    </div>
+                    <div class="card-body">
+                        <div id="resultContent"></div>
+                    </div>
+                </div>
+            </div>
             
-
-            
+            <!-- エラー表示エリア -->
+            <div id="errorArea" class="mt-4 d-none">
+                <div class="alert alert-danger" role="alert">
+                    <h6>エラーが発生しました</h6>
+                    <div id="errorContent"></div>
+                </div>
+            </div>
 
         </div>
 
@@ -910,6 +930,7 @@ function displaySavedData(data) {
             html += '<tr>';
             html += `<td>${item.ページ || 'N/A'}</td>`;
             html += `<td>${item.出荷日 || 'N/A'}</td>`;
+            html += `<td>${item.受注番号 || 'N/A'}</td>`;
             html += `<td>${item.納入先番号 || 'N/A'}</td>`;
             html += `<td>${item.担当者 || 'N/A'}</td>`;
             html += `<td>${addCommas(item.税抜合計) || 'N/A'}</td>`;
@@ -926,13 +947,23 @@ document.addEventListener('DOMContentLoaded', function() {
     if (uploadForm) {
         uploadForm.addEventListener('submit', handleFileUpload);
     }
+    
+    // 必要な要素の参照を取得
+    window.fileProgressList = document.getElementById('fileProgressList');
+    window.fileProgressArea = document.getElementById('fileProgressArea');
+    window.retryButtonArea = document.getElementById('retryButtonArea');
+    window.retryFailedBtn = document.getElementById('retryFailedBtn');
+    window.resultContent = document.getElementById('resultContent');
+    window.resultArea = document.getElementById('resultArea');
+    window.errorArea = document.getElementById('errorArea');
+    window.errorContent = document.getElementById('errorContent');
 });
 
 // ファイルアップロード処理
 function handleFileUpload(event) {
     event.preventDefault();
     
-    const fileInput = document.getElementById('imageFiles');
+    const fileInput = document.getElementById('fileInput');
     const files = fileInput.files;
     
     if (files.length === 0) {
@@ -946,13 +977,13 @@ function handleFileUpload(event) {
     }
     
     // ボタンの状態を変更
-    const uploadBtn = document.getElementById('uploadBtn');
-    const uploadBtnText = document.getElementById('uploadBtnText');
-    const uploadBtnSpinner = document.getElementById('uploadBtnSpinner');
+    const analyzeBtn = document.getElementById('analyzeBtn');
+    const btnText = document.getElementById('btnText');
+    const btnSpinner = document.getElementById('btnSpinner');
     
-    uploadBtn.disabled = true;
-    uploadBtnText.textContent = '分析中...';
-    uploadBtnSpinner.classList.remove('d-none');
+    analyzeBtn.disabled = true;
+    btnText.textContent = '分析中...';
+    btnSpinner.classList.remove('d-none');
     
     // FormDataを作成
     const formData = new FormData();
@@ -962,76 +993,400 @@ function handleFileUpload(event) {
     
 
     
-    // 選択されたファイルの進捗表示エリアを表示
-    const selectedFilesArea = document.getElementById('selectedFilesArea');
-    if (selectedFilesArea) {
-        selectedFilesArea.style.display = 'block';
-        displaySelectedFiles(files);
-    }
+    // ファイルリストを表示
+    displayFileList(files);
     
     // サーバーにアップロード
-    fetch('/api/dify/analyze-multiple', {
+    fetch('/api/dify/analyze-sequential', {
         method: 'POST',
         body: formData
     })
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            // 選択されたファイルの進捗エリアを非表示
-            if (selectedFilesArea) {
-                selectedFilesArea.style.display = 'none';
-            }
-            
-            // 分析結果をローカルストレージに保存
-            try {
-                let displayData = [];
-                data.results.forEach(item => {
-                    if (item.result && item.result.extracted_data) {
-                        // extracted_dataが配列の場合は展開
-                        if (Array.isArray(item.result.extracted_data)) {
-                            displayData = displayData.concat(item.result.extracted_data);
-                        } else {
-                            displayData.push(item.result.extracted_data);
-                        }
-                    } else if (item.result) {
-                        displayData.push(item.result);
-                    } else {
-                        displayData.push(item);
-                    }
-                });
-                
-                localStorage.setItem('analysisResults', JSON.stringify(displayData));
-                sessionStorage.setItem('analysisResults', JSON.stringify(displayData));
-                console.log('分析結果をローカルストレージに保存しました:', displayData);
-            } catch (error) {
-                console.error('ローカルストレージへの保存に失敗しました:', error);
-            }
-            
-            // 基本情報タブに切り替え
-            const basicInfoTab = document.getElementById('basic-info-tab');
-            if (basicInfoTab) {
-                const tab = new bootstrap.Tab(basicInfoTab);
-                tab.show();
-                
-                // タブ切り替え後にデータを読み込む
-                setTimeout(() => {
-                    loadTableData();
-                }, 100);
-            }
+            startPollingForResults(data.session_id, data.total_files);
         } else {
-            alert('分析に失敗しました: ' + data.error);
+            const errorMessage = data.error || '処理開始に失敗しました';
+            displayError(errorMessage);
+            // ボタンの状態をリセット
+            const analyzeBtn = document.getElementById('analyzeBtn');
+            const btnText = document.getElementById('btnText');
+            const btnSpinner = document.getElementById('btnSpinner');
+            
+            if (analyzeBtn && btnText && btnSpinner) {
+                analyzeBtn.disabled = false;
+                btnText.textContent = '分析開始';
+                btnSpinner.classList.add('d-none');
+            }
         }
     })
     .catch(error => {
-        console.error('アップロードエラー:', error);
-        alert('アップロード中にエラーが発生しました。');
-    })
-    .finally(() => {
-        // ボタンの状態を元に戻す
-        uploadBtn.disabled = false;
-        uploadBtnText.textContent = '画像分析を開始';
-        uploadBtnSpinner.classList.add('d-none');
+        const errorMessage = '処理開始中にエラーが発生しました';
+        displayError(errorMessage);
+        console.error('Sequential processing error:', error);
+        // ボタンの状態をリセット
+        const analyzeBtn = document.getElementById('analyzeBtn');
+        const btnText = document.getElementById('btnText');
+        const btnSpinner = document.getElementById('btnSpinner');
+        
+        if (analyzeBtn && btnText && btnSpinner) {
+            analyzeBtn.disabled = false;
+            btnText.textContent = '分析開始';
+            btnSpinner.classList.add('d-none');
+        }
     });
+}
+
+// ファイルリストを表示
+function displayFileList(files) {
+    if (!fileProgressList || !fileProgressArea) return;
+    
+    // 常に進捗表示エリアを表示
+    let html = '';
+    for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        if (isValidPNGFile(file) && file.size <= 16 * 1024 * 1024) {
+            html += `<div class="file-progress-item" data-file-index="${i}">`;
+            html += `<span class="file-name">${file.name}</span>`;
+            html += `<span class="file-status">⏳ 待機中</span>`;
+            html += `</div>`;
+        }
+    }
+    
+    fileProgressList.innerHTML = html;
+    showElement(fileProgressArea);
+}
+
+// ファイル進捗を更新
+function updateFileProgress(results) {
+    if (!fileProgressList) return;
+    
+    results.forEach(result => {
+        const fileItem = fileProgressList.querySelector(`[data-file-index="${result.file_index}"]`);
+        if (fileItem) {
+            const statusElement = fileItem.querySelector('.file-status');
+            if (statusElement) {
+                const elapsedText = result.elapsed_seconds ? ` (${result.elapsed_seconds}秒)` : '';
+                const attemptText = result.current_attempt ? ` (${result.current_attempt}回目)` : '';
+                
+                if (result.failed) {
+                    statusElement.innerHTML = `❌ 失敗${attemptText}${elapsedText}`;
+                    statusElement.style.color = '#dc3545';
+                    fileItem.classList.add('failed');
+                    fileItem.classList.remove('completed', 'processing');
+                } else {
+                    statusElement.innerHTML = `✅ 完了${attemptText}${elapsedText}`;
+                    statusElement.style.color = '#28a745';
+                    fileItem.classList.add('completed');
+                    fileItem.classList.remove('failed', 'processing');
+                }
+            }
+        }
+    });
+}
+
+// 現在処理中のファイルの状態を更新
+function updateCurrentProcessingStatus(processingInfo) {
+    if (!fileProgressList || !processingInfo) return;
+    
+    const fileItem = fileProgressList.querySelector(`[data-file-index="${processingInfo.file_index}"]`);
+    if (fileItem) {
+        const statusElement = fileItem.querySelector('.file-status');
+        if (statusElement) {
+            const attemptText = `${processingInfo.current_attempt}回目分析中`;
+            statusElement.innerHTML = `🔄 ${attemptText}`;
+            statusElement.innerHTML = `🔄 ${attemptText}`;
+            statusElement.style.color = '#007bff';
+            fileItem.classList.add('processing');
+            fileItem.classList.remove('completed', 'failed');
+        }
+    }
+}
+
+// リトライボタンの表示/非表示を制御
+function checkRetryButtonVisibility(allResults, isCompleted) {
+    if (!retryButtonArea || !retryFailedBtn) return;
+    
+    if (isCompleted && allResults.some(result => result.failed)) {
+        showElement(retryButtonArea);
+    } else {
+        hideElement(retryButtonArea);
+    }
+}
+
+// セッション結果のポーリング監視を開始
+function startPollingForResults(sessionId, totalFiles) {
+    let lastResultCount = 0;
+    let allResults = [];
+    
+    const pollInterval = setInterval(async () => {
+        try {
+            const response = await fetch(`/api/dify/session/${sessionId}/status?last_result_count=${lastResultCount}`);
+            const data = await response.json();
+            
+            if (!response.ok) {
+                throw new Error(data.error || 'Status check failed');
+            }
+            
+            if (data.current_processing) {
+                updateCurrentProcessingStatus(data.current_processing);
+            }
+            
+            if (data.new_results && data.new_results.length > 0) {
+                allResults = allResults.concat(data.new_results);
+                displaySequentialResults(allResults);
+                lastResultCount = data.total_results_count;
+            }
+            
+            if (data.completed) {
+                clearInterval(pollInterval);
+                // ボタンの状態をリセット
+                const analyzeBtn = document.getElementById('analyzeBtn');
+                const btnText = document.getElementById('btnText');
+                const btnSpinner = document.getElementById('btnSpinner');
+                
+                if (analyzeBtn && btnText && btnSpinner) {
+                    analyzeBtn.disabled = false;
+                    btnText.textContent = '分析開始';
+                    btnSpinner.classList.add('d-none');
+                }
+                
+                checkRetryButtonVisibility(allResults, true);
+                
+                if (data.errors && data.errors.length > 0) {
+                    console.warn('Processing errors:', data.errors);
+                }
+                
+                // 基本情報タブに切り替え
+                const basicInfoTab = document.getElementById('basic-info-tab');
+                if (basicInfoTab) {
+                    const tab = new bootstrap.Tab(basicInfoTab);
+                    tab.show();
+                    
+                    // タブ切り替え後にデータを読み込む
+                    setTimeout(() => {
+                        loadTableData();
+                    }, 100);
+                }
+            }
+            
+        } catch (error) {
+            clearInterval(pollInterval);
+            const errorMessage = 'ステータス確認中にエラーが発生しました';
+            displayError(errorMessage);
+            console.error('Polling error:', error);
+            // ボタンの状態をリセット
+            const analyzeBtn = document.getElementById('analyzeBtn');
+            const btnText = document.getElementById('btnText');
+            const btnSpinner = document.getElementById('btnSpinner');
+            
+            if (analyzeBtn && btnText && btnSpinner) {
+                analyzeBtn.disabled = false;
+                btnText.textContent = '分析開始';
+                btnSpinner.classList.add('d-none');
+            }
+        }
+    }, 2000);
+}
+
+// 逐次処理結果を表示
+function displaySequentialResults(results) {
+    if (window.resultContent) {
+        let html = '';
+        results.sort((a, b) => a.file_index - b.file_index);
+        results.forEach((item, index) => {
+            html += `<div class="mb-3">`;
+            html += `<h6>ファイル ${item.file_index + 1}: ${item.filename}</h6>`;
+            html += formatResultData(item.result);
+            html += `</div>`;
+        });
+        window.resultContent.innerHTML = html;
+    }
+    showElement(window.resultArea);
+    hideElement(window.errorArea);
+    
+    updateFileProgress(results);
+    
+    checkRetryButtonVisibility(results, false);
+    
+    // 分析結果を保存
+    saveAnalysisResults(results);
+    
+    // 分析結果をローカルストレージにも保存（データ表示ページ用）
+    try {
+        let displayData = [];
+        results.forEach(item => {
+            if (item.result && item.result.extracted_data) {
+                if (Array.isArray(item.result.extracted_data)) {
+                    displayData = displayData.concat(item.result.extracted_data);
+                } else {
+                    displayData.push(item.result.extracted_data);
+                }
+            } else if (item.result) {
+                displayData.push(item.result);
+            } else {
+                displayData.push(item);
+            }
+        });
+        
+        localStorage.setItem('analysisResults', JSON.stringify(displayData));
+        sessionStorage.setItem('analysisResults', JSON.stringify(displayData));
+        console.log('分析結果をローカルストレージに保存しました:', displayData);
+    } catch (error) {
+        console.error('ローカルストレージへの保存に失敗しました:', error);
+    }
+}
+
+// グローバル変数
+let currentSessionId = null;
+
+// リトライボタンのクリックイベント
+async function handleRetryFailedClick(event) {
+    event.preventDefault();
+    
+    try {
+        hideElement(retryButtonArea);
+        
+        const response = await fetch(`/api/dify/session/${currentSessionId}/retry-failed`, {
+            method: 'POST'
+        });
+        
+        const result = await response.json();
+        
+        if (!response.ok) {
+            throw new Error(result.error || 'Batch retry failed');
+        }
+        
+        console.log('Batch retry started successfully:', result.message);
+        
+        startPollingForResults(currentSessionId, 0);
+        
+    } catch (error) {
+        console.error('Batch retry error:', error);
+        showElement(retryButtonArea);
+    }
+}
+
+// ボタンのローディング状態を設定
+function setButtonLoading(button, isLoading) {
+    if (!button) return;
+    
+    const btnText = button.querySelector('#btnText');
+    const btnSpinner = button.querySelector('#btnSpinner');
+    
+    if (isLoading) {
+        button.disabled = true;
+        if (btnText) btnText.textContent = '分析中...';
+        if (btnSpinner) btnSpinner.classList.remove('d-none');
+    } else {
+        button.disabled = false;
+        if (btnText) btnText.textContent = '分析開始';
+        if (btnSpinner) btnSpinner.classList.add('d-none');
+    }
+}
+
+// エラーを表示
+function displayError(error) {
+    if (window.errorContent) {
+        window.errorContent.textContent = error;
+    }
+    showElement(window.errorArea);
+    hideElement(window.resultArea);
+}
+
+// 結果データをフォーマット
+function formatResultData(result) {
+    if (result && result.extracted_data) {
+        return `<pre class="result-content">${JSON.stringify(result.extracted_data, null, 2)}</pre>`;
+    } else if (result && result.text) {
+        const textContent = result.text;
+        if (textContent.includes('```json')) {
+            const jsonMatch = textContent.match(/```json\s*\n(.*?)\n```/s);
+            if (jsonMatch) {
+                try {
+                    const parsedData = JSON.parse(jsonMatch[1]);
+                    return `<pre class="result-content">${JSON.stringify(parsedData, null, 2)}</pre>`;
+                } catch (e) {
+                    console.warn('Failed to parse JSON from markdown:', e);
+                }
+            }
+        }
+        return `<pre class="result-content">${textContent}</pre>`;
+    } else {
+        return `<pre class="result-content">${JSON.stringify(result, null, 2)}</pre>`;
+    }
+}
+
+// 要素を表示/非表示
+function showElement(element) {
+    if (element) element.classList.remove('d-none');
+}
+
+function hideElement(element) {
+    if (element) element.classList.add('d-none');
+}
+
+// PNGファイルの検証
+function isValidPNGFile(file) {
+    return file.type === 'image/png' || file.name.toLowerCase().endsWith('.png');
+}
+
+// ファイルサイズのフォーマット
+function formatFileSize(bytes) {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+
+// メッセージを表示
+function showMessage(message, type = 'info') {
+    // シンプルなアラート表示
+    alert(message);
+}
+
+// 分析結果を保存
+async function saveAnalysisResults(results) {
+    try {
+        const successfulResults = results.filter(result => !result.failed);
+        
+        if (successfulResults.length === 0) {
+            console.log('保存する分析結果がありません');
+            return;
+        }
+        
+        const saveData = successfulResults.map(result => {
+            const extractedData = result.result.extracted_data || {};
+            return {
+                filename: result.filename,
+                file_index: result.file_index,
+                extracted_data: extractedData,
+                completed_at: result.completed_at,
+                elapsed_seconds: result.elapsed_seconds
+            };
+        });
+        
+        const response = await fetch('/api/analysis/results', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                results: saveData
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (response.ok) {
+            console.log('分析結果を保存しました:', result.message);
+        } else {
+            console.error('分析結果の保存に失敗しました:', result.error);
+        }
+    } catch (error) {
+        console.error('分析結果の保存中にエラーが発生しました:', error);
+    }
 }
 
 // アップロード結果を表示
@@ -1118,125 +1473,49 @@ function displayUploadResults(results) {
     uploadResultsArea.style.display = 'block';
 }
 
-// 選択されたファイルの進捗を表示
-function displaySelectedFiles(files) {
-    const selectedFilesContent = document.getElementById('selectedFilesContent');
-    if (!selectedFilesContent) return;
-    
-    let html = '<div class="row">';
-    
-    // FileListを配列に変換
-    const filesArray = Array.from(files);
-    
-    filesArray.forEach((file, index) => {
-        html += '<div class="col-md-6 mb-3">';
-        html += '<div class="card border-primary">';
-        html += '<div class="card-body p-3">';
-        html += '<div class="d-flex align-items-center mb-2">';
-        html += '<span class="text-primary me-2">📄</span>';
-        html += `<strong>${file.name}</strong>`;
-        html += '</div>';
-        
-        // 進捗表示（元のデザイン）
-        html += '<div class="d-flex justify-content-between align-items-center">';
-        html += '<span class="text-muted" id="status-' + index + '">待機中</span>';
-        html += '<span class="text-muted" id="time-' + index + '">0秒</span>';
-        html += '</div>';
-        
-        html += '</div>';
-        html += '</div>';
-        html += '</div>';
-    });
-    
-    html += '</div>';
-    selectedFilesContent.innerHTML = html;
-    
-    // 元の素晴らしい進捗表示のアニメーション
-    startOriginalProgress(filesArray.length);
-}
-
-// 元の素晴らしい進捗表示のアニメーション
-function startOriginalProgress(fileCount) {
-    const statusTexts = [];
-    const timeTexts = [];
-    
-    for (let i = 0; i < fileCount; i++) {
-        const statusText = document.getElementById('status-' + i);
-        const timeText = document.getElementById('time-' + i);
-        
-        if (statusText && timeText) {
-            statusTexts.push(statusText);
-            timeTexts.push(timeText);
-        }
+// ページ読み込み完了後の初期化
+document.addEventListener('DOMContentLoaded', function() {
+    // リトライボタンのイベントリスナーを追加
+    const retryFailedBtn = document.getElementById('retryFailedBtn');
+    if (retryFailedBtn) {
+        retryFailedBtn.addEventListener('click', handleRetryFailedClick);
     }
     
-    let currentFile = 0;
-    let currentTime = 0;
-    let currentAttempt = 1;
-    let currentRetry = 0;
+    // ファイル選択時の処理
+    const fileInput = document.getElementById('fileInput');
     
-    const interval = setInterval(() => {
-        if (currentFile >= fileCount) {
-            clearInterval(interval);
-            return;
-        }
-        
-        // 時間の更新
-        currentTime += 0.1;
-        if (timeTexts[currentFile]) {
-            timeTexts[currentFile].textContent = `${currentTime.toFixed(1)}秒`;
-        }
-        
-        // ステータスの更新（元の素晴らしいデザイン）
-        if (currentTime < 3) {
-            // 待機中
-            if (statusTexts[currentFile]) {
-                statusTexts[currentFile].textContent = '待機中';
-                statusTexts[currentFile].className = 'text-muted';
+    if (fileInput) {
+        fileInput.addEventListener('change', (e) => {
+            const files = e.target.files;
+            if (files.length > 0) {
+                let validFiles = 0;
+                let totalSize = 0;
+                
+                for (let i = 0; i < files.length; i++) {
+                    const file = files[i];
+                    if (!isValidPNGFile(file)) {
+                        continue;
+                    }
+                    
+                    if (file.size > 16 * 1024 * 1024) {
+                        continue;
+                    }
+                    
+                    validFiles++;
+                    totalSize += file.size;
+                }
+                
+                if (validFiles === 0) {
+                    fileInput.value = '';
+                    return;
+                }
+                
+                // 常に進捗表示エリアを表示
+                displayFileList(files);
             }
-        } else if (currentTime < 6) {
-            // 1回目分析中
-            if (statusTexts[currentFile]) {
-                statusTexts[currentFile].textContent = '1回目分析中';
-                statusTexts[currentFile].className = 'text-primary';
-            }
-            currentAttempt = 1;
-        } else if (currentTime < 9) {
-            // 2回目分析中
-            if (statusTexts[currentFile]) {
-                statusTexts[currentFile].textContent = '2回目分析中';
-                statusTexts[currentFile].className = 'text-warning';
-            }
-            currentAttempt = 2;
-        } else if (currentTime < 12) {
-            // 3回目分析中
-            if (statusTexts[currentFile]) {
-                statusTexts[currentFile].textContent = '3回目分析中';
-                statusTexts[currentFile].className = 'text-info';
-            }
-            currentAttempt = 3;
-        } else if (currentTime < 15) {
-            // 完了間近
-            if (statusTexts[currentFile]) {
-                statusTexts[currentFile].textContent = '完了間近';
-                statusTexts[currentFile].className = 'text-success';
-            }
-        } else {
-            // 完了
-            if (statusTexts[currentFile]) {
-                statusTexts[currentFile].textContent = '完了';
-                statusTexts[currentFile].className = 'text-success';
-            }
-            
-            // 次のファイルに移行
-            currentFile++;
-            currentTime = 0;
-            currentAttempt = 1;
-            currentRetry = 0;
-        }
-    }, 100);
-}
-
+        });
+    }
+});
 
 </script>
 {% endblock %}
