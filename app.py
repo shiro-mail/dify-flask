@@ -34,6 +34,10 @@ def index():
 def upload_page():
     return render_template('upload.html')
 
+@app.route('/data')
+def data_page():
+    return render_template('data.html')
+
 @app.route('/api/dify/analyze', methods=['POST'])
 def analyze_image():
     try:
