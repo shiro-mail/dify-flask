@@ -1,10 +1,12 @@
 from flask import Flask, render_template, request, jsonify, Response
-import requests
+import sqlite3
 import os
-import uuid
-import time
 import json
+import time
+from datetime import datetime
+import requests
 import re
+import uuid
 from io import BytesIO
 from werkzeug.utils import secure_filename
 from threading import Lock
@@ -14,6 +16,32 @@ load_dotenv()
 
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
+
+# データベースの初期化
+def init_database():
+    conn = sqlite3.connect('inventory_data.db')
+    cursor = conn.cursor()
+    
+    # 基本情報テーブルの作成
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS basic_info (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ページ TEXT,
+            出荷日 TEXT,
+            受注番号 TEXT,
+            納入先番号 TEXT,
+            担当者 TEXT,
+            税抜合計 TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    
+    conn.commit()
+    conn.close()
+
+# アプリケーション起動時にデータベースを初期化
+init_database()
 
 processing_sessions = {}
 session_lock = Lock()
@@ -750,10 +778,32 @@ analysis_results = []
 @app.route('/api/analysis/results', methods=['GET'])
 def get_analysis_results():
     """分析結果の一覧を取得"""
-    return jsonify({
-        'success': True,
-        'results': analysis_results
-    })
+    try:
+        conn = sqlite3.connect('inventory_data.db')
+        cursor = conn.cursor()
+        
+        cursor.execute('SELECT ページ, 出荷日, 受注番号, 納入先番号, 担当者, 税抜合計 FROM basic_info ORDER BY created_at DESC')
+        rows = cursor.fetchall()
+        
+        results = []
+        for row in rows:
+            results.append({
+                'ページ': row[0],
+                '出荷日': row[1],
+                '受注番号': row[2],
+                '納入先番号': row[3],
+                '担当者': row[4],
+                '税抜合計': row[5]
+            })
+        
+        conn.close()
+        
+        return jsonify({
+            'success': True,
+            'results': results
+        })
+    except Exception as e:
+        return jsonify({'error': f'データ取得エラー: {str(e)}'}), 500
 
 @app.route('/api/analysis/results', methods=['POST'])
 def save_analysis_results():
@@ -763,12 +813,37 @@ def save_analysis_results():
         if not data or 'results' not in data:
             return jsonify({'error': 'Invalid data format'}), 400
         
+        # SQLiteデータベースに保存
+        conn = sqlite3.connect('inventory_data.db')
+        cursor = conn.cursor()
+        
+        # 既存データをクリア
+        cursor.execute('DELETE FROM basic_info')
+        
+        # 新しいデータを挿入
+        for item in data['results']:
+            cursor.execute('''
+                INSERT INTO basic_info (ページ, 出荷日, 受注番号, 納入先番号, 担当者, 税抜合計)
+                VALUES (?, ?, ?, ?, ?, ?)
+            ''', (
+                item.get('ページ', ''),
+                item.get('出荷日', ''),
+                item.get('受注番号', ''),
+                item.get('納入先番号', ''),
+                item.get('担当者', ''),
+                item.get('税抜合計', '')
+            ))
+        
+        conn.commit()
+        conn.close()
+        
+        # グローバル変数も更新
         global analysis_results
         analysis_results = data['results']
         
         return jsonify({
             'success': True,
-            'message': f'{len(analysis_results)}件の分析結果を保存しました'
+            'message': f'{len(data["results"])}件の分析結果をSQLiteデータベースに保存しました'
         })
     except Exception as e:
         return jsonify({'error': f'保存エラー: {str(e)}'}), 500
