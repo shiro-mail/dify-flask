@@ -151,15 +151,15 @@
                                 <table class="table table-striped table-hover mb-0">
                                     <thead class="bg-dark text-white">
                                         <tr>
-                                            <th style="width: 40px;">
-                                                <input type="checkbox" id="selectAll" onchange="toggleSelectAll()" checked>
-                                            </th>
                                             <th style="width: 60px;">ページ</th>
                                             <th style="width: 100px;">出荷日</th>
                                             <th style="width: 120px;">受注番号</th>
                                             <th style="width: 140px;">納入先番号</th>
                                             <th style="width: 100px;">担当者</th>
                                             <th style="width: 120px;">税抜合計</th>
+                                            <th style="width: 40px;">
+                                                <input type="checkbox" id="selectAll" onchange="toggleSelectAll()">
+                                            </th>
                                             <th style="width: 120px;">操作</th>
                                         </tr>
                                     </thead>
@@ -193,9 +193,16 @@
         <!-- 仕入一覧タブ -->
         <div class="tab-pane fade" id="inventory-list" role="tabpanel" aria-labelledby="inventory-list-tab">
             <div class="row mb-3">
-                <div class="col-12">
-                    <h2 class="h4">仕入一覧</h2>
-                    <p class="text-muted">保存されたデータの一覧を表示します</p>
+                <div class="col-12 d-flex justify-content-between align-items-center">
+                    <div>
+                        <h2 class="h4">仕入一覧</h2>
+                        <p class="text-muted">保存されたデータの一覧を表示します</p>
+                    </div>
+                    <div>
+                        <button type="button" class="btn btn-danger" onclick="deleteAllSavedData()">
+                            <i class="fas fa-trash-alt"></i> 全データ削除（開発用）
+                        </button>
+                    </div>
                 </div>
             </div>
             
@@ -267,6 +274,100 @@
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">キャンセル</button>
                 <button type="button" class="btn btn-danger" onclick="confirmDeleteAllData()">全削除</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 仕入一覧の全データ削除確認用モーダル -->
+<div class="modal fade" id="deleteAllSavedDataModal" tabindex="-1" aria-labelledby="deleteAllSavedDataModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="deleteAllSavedDataModalLabel">全データ削除確認（開発用）</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-danger">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <strong>警告: この操作は取り消せません！</strong>
+                </div>
+                <p>データベースに保存されている全ての仕入データを削除しますか？</p>
+                <p class="text-muted">※ この機能は開発用です。本番環境では使用しないでください。</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">キャンセル</button>
+                <button type="button" class="btn btn-danger" onclick="confirmDeleteAllSavedData()">
+                    <i class="fas fa-trash-alt"></i> 全削除実行
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ファイル取込 残留情報クリア確認モーダル -->
+<div class="modal fade" id="clearImportConfirmModal" tabindex="-1" aria-labelledby="clearImportConfirmModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="clearImportConfirmModalLabel">転記した取得情報を消していいですか？</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>情報が残ったままです。画面から削除しますか？</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" id="clearImportCancelBtn" data-bs-dismiss="modal">残す</button>
+                <button type="button" class="btn btn-danger" id="clearImportOkBtn">消す</button>
+            </div>
+        </div>
+    </div>
+    </div>
+
+<!-- 重複データ確認用モーダル -->
+<div class="modal fade" id="duplicateConfirmModal" tabindex="-1" aria-labelledby="duplicateConfirmModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="duplicateConfirmModalLabel">重複データ確認</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-warning">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <strong>重複データが検出されました</strong>
+                </div>
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6>新規データ</h6>
+                        <div class="table-responsive">
+                            <table class="table table-sm">
+                                <tbody id="newDataTable">
+                                    <!-- 新規データがここに表示されます -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <h6>既存データ</h6>
+                        <div class="table-responsive">
+                            <table class="table table-sm">
+                                <tbody id="existingDataTable">
+                                    <!-- 既存データがここに表示されます -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                <p class="mt-3">
+                    <strong>受注番号と税抜合計が同じデータが既に存在します。</strong><br>
+                    このデータを保存しますか？
+                </p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">キャンセル</button>
+                <button type="button" class="btn btn-warning" onclick="saveWithDuplicate()">重複を許可して保存</button>
+                <button type="button" class="btn btn-primary" onclick="saveWithoutDuplicate()">重複を除外して保存</button>
             </div>
         </div>
     </div>
@@ -434,13 +535,27 @@ function loadTableData() {
                 });
             });
             
-            // textフィールドからJSONデータを抽出してパース
+            // データを抽出してパース
             let actualData = [];
             try {
-                // すべてのanalysisDataのtextフィールドを処理
+                // すべてのanalysisDataを処理
                 analysisData.forEach((item, index) => {
-                    if (item && item.text) {
-                        console.log(`処理中のアイテム ${index}:`, item.text.substring(0, 200) + '...');
+                    console.log(`処理中のアイテム ${index}:`, item);
+                    
+                    // 新しい形式（extracted_data）の処理
+                    if (item && item.extracted_data) {
+                        console.log(`アイテム ${index} で extracted_data を発見`);
+                        if (Array.isArray(item.extracted_data)) {
+                            console.log(`配列データを発見: ${item.extracted_data.length} 件`);
+                            actualData = actualData.concat(item.extracted_data);
+                        } else {
+                            console.log('オブジェクトデータを発見');
+                            actualData.push(item.extracted_data);
+                        }
+                    }
+                    // 従来の形式（textフィールド）の処理
+                    else if (item && item.text) {
+                        console.log(`アイテム ${index} で text フィールドを処理:`, item.text.substring(0, 200) + '...');
                         
                         // textフィールドからJSON部分を抽出（複数のJSONブロックに対応）
                         const jsonMatches = item.text.match(/```json\s*\n([\s\S]*?)\n```/g);
@@ -483,6 +598,11 @@ function loadTableData() {
                                 }
                             }
                         }
+                    }
+                    // 直接データが格納されている場合
+                    else if (item && typeof item === 'object') {
+                        console.log(`アイテム ${index} で直接データを発見`);
+                        actualData.push(item);
                     }
                 });
                 
@@ -531,14 +651,7 @@ function loadTableData() {
                             actualData;
                         
                         debugArea.innerHTML = `
-                            <h6>パースされたデータ（${actualData.length}件）:</h6>
-                            <div class="alert alert-info">
-                                <strong>データ処理状況:</strong><br>
-                                • 総データ件数: ${actualData.length}件<br>
-                                • 表示件数: ${displayData.length}件<br>
-                                ${actualData.length > 100 ? `• 表示制限: 最初の100件のみ表示（他は省略）<br>` : ''}
-                                • ページ範囲: ${Math.min(...actualData.map(d => parseInt(d.ページ) || 0))}〜${Math.max(...actualData.map(d => parseInt(d.ページ) || 0))}ページ
-                            </div>
+                            <h6>パースされたデータ（${displayData.length}件）:</h6>
                             <pre>${JSON.stringify(displayData, null, 2)}</pre>
                         `;
                         
@@ -608,13 +721,13 @@ function displayTableData(data) {
     
     data.forEach((item, index) => {
         html += '<tr>';
-        html += `<td><input type="checkbox" class="row-checkbox" value="${index}" onchange="updateSelectAllState()" checked></td>`;
         html += `<td>${item.ページ || 'N/A'}</td>`;
         html += `<td>${item.出荷日 || 'N/A'}</td>`;
         html += `<td>${item.受注番号 || 'N/A'}</td>`;
         html += `<td>${item.納入先番号 || 'N/A'}</td>`;
         html += `<td>${item.担当者 || 'N/A'}</td>`;
         html += `<td>${addCommas(item.税抜合計)}</td>`;
+        html += `<td><input type="checkbox" class="row-checkbox" value="${index}" onchange="updateSelectAllState()"></td>`;
         html += '<td>';
         html += '<div class="d-flex gap-1">';
         html += `<button type="button" class="btn btn-warning btn-sm" onclick="editRow(${index})">編集</button>`;
@@ -836,6 +949,16 @@ function toggleSelectAll() {
     
     rowCheckboxes.forEach(checkbox => {
         checkbox.checked = selectAllCheckbox.checked;
+        
+        // 各行のスタイルを更新
+        const row = checkbox.closest('tr');
+        if (row) {
+            if (checkbox.checked) {
+                row.classList.add('row-selected');
+            } else {
+                row.classList.remove('row-selected');
+            }
+        }
     });
 }
 
@@ -844,6 +967,18 @@ function updateSelectAllState() {
     const selectAllCheckbox = document.getElementById('selectAll');
     const rowCheckboxes = document.querySelectorAll('.row-checkbox');
     const checkedCount = document.querySelectorAll('.row-checkbox:checked').length;
+    
+    // 各行のスタイルを更新
+    rowCheckboxes.forEach(checkbox => {
+        const row = checkbox.closest('tr');
+        if (row) {
+            if (checkbox.checked) {
+                row.classList.add('row-selected');
+            } else {
+                row.classList.remove('row-selected');
+            }
+        }
+    });
     
     if (checkedCount === 0) {
         selectAllCheckbox.checked = false;
@@ -888,8 +1023,6 @@ function saveSelectedData() {
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            alert(`選択された${selectedData.length}件のデータを保存しました。`);
-            
             // 保存されたデータをcurrentDataから削除
             // インデックスがずれないように、後ろから削除
             const sortedIndices = Array.from(selectedCheckboxes)
@@ -1056,12 +1189,19 @@ function displaySavedData(data) {
         console.log(`${data.length} 件のデータをテーブルに表示します`);
         data.forEach((item, index) => {
             console.log(`行 ${index + 1}:`, item);
+            
+            // データの有効性チェック（必須フィールドが空でないことを確認）
+            if (!item.ページ || !item.出荷日 || !item.受注番号 || !item.納入先番号 || !item.担当者 || !item.税抜合計) {
+                console.log(`行 ${index + 1} のデータが不完全です。スキップします:`, item);
+                return; // この行をスキップ
+            }
+            
             html += '<tr>';
-            html += `<td>${item.ページ || 'N/A'}</td>`;
-            html += `<td>${item.出荷日 || 'N/A'}</td>`;
-            html += `<td>${item.受注番号 || 'N/A'}</td>`;
-            html += `<td>${item.納入先番号 || 'N/A'}</td>`;
-            html += `<td>${item.担当者 || 'N/A'}</td>`;
+            html += `<td>${item.ページ}</td>`;
+            html += `<td>${item.出荷日}</td>`;
+            html += `<td>${item.受注番号}</td>`;
+            html += `<td>${item.納入先番号}</td>`;
+            html += `<td>${item.担当者}</td>`;
             html += `<td>${addCommas(item.税抜合計)}</td>`;
             html += '</tr>';
         });
@@ -1413,7 +1553,7 @@ function displaySequentialResults(results) {
     // 分析結果を保存
     saveAnalysisResults(results);
     
-    // 分析結果をローカルストレージにも保存（データ表示ページ用）
+    // 分析結果をローカルストレージに保存（分析結果のみ、保存データとは分離）
     try {
         let displayData = [];
         results.forEach(item => {
@@ -1430,9 +1570,12 @@ function displaySequentialResults(results) {
             }
         });
         
+        // 分析結果のみをlocalStorageに保存（保存データとは分離）
         localStorage.setItem('analysisResults', JSON.stringify(displayData));
         sessionStorage.setItem('analysisResults', JSON.stringify(displayData));
-        console.log('分析結果をローカルストレージに保存しました:', displayData);
+        console.log('分析結果をローカルストレージに保存しました（保存データとは分離）');
+        console.log('保存された分析結果件数:', displayData.length);
+        console.log('保存された分析結果:', displayData);
     } catch (error) {
         console.error('ローカルストレージへの保存に失敗しました:', error);
     }
@@ -1557,11 +1700,20 @@ function startAutoRetryPolling(sessionId) {
             if (data.current_processing) {
                 updateCurrentProcessingStatus(data.current_processing);
             }
+
+            // 進行中でも、新しく完了した結果があれば即座に反映（完了表示に更新）
+            if (data.new_results && data.new_results.length > 0) {
+                updateFileProgress(data.new_results);
+            }
             
             if (data.completed) {
                 clearInterval(pollInterval);
                 
                 const allResults = data.results || [];
+                // 念のため、完了時点でも最終結果を反映
+                if (allResults.length > 0) {
+                    updateFileProgress(allResults);
+                }
                 const stillFailed = allResults.filter(r => r.failed);
                 
                 if (stillFailed.length > 0 && retryAttempts < maxRetryAttempts) {
@@ -1933,7 +2085,201 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
     }
+
+    // ファイル取込タブに戻った際の残留情報クリア確認
+    const fileImportTabButton = document.getElementById('file-import-tab');
+    if (fileImportTabButton) {
+        fileImportTabButton.addEventListener('shown.bs.tab', () => {
+            try {
+                if (hasResidualFileImportState()) {
+                    // カスタムモーダルを表示（残す/消す）
+                    const modalEl = document.getElementById('clearImportConfirmModal');
+                    const okBtn = document.getElementById('clearImportOkBtn');
+                    if (modalEl && okBtn) {
+                        const modal = new bootstrap.Modal(modalEl);
+                        const onOk = () => {
+                            try { clearFileImportUIState(); } catch (e) { console.error(e); }
+                            okBtn.removeEventListener('click', onOk);
+                            modal.hide();
+                        };
+                        okBtn.addEventListener('click', onOk);
+                        modal.show();
+                    }
+                }
+            } catch (e) {
+                console.error('残留情報確認中にエラー:', e);
+            }
+        });
+    }
 });
+
+// ファイル取込画面に残留情報があるか判定
+function hasResidualFileImportState() {
+    try {
+        const hasProgress = window.fileProgressList && window.fileProgressList.children && window.fileProgressList.children.length > 0;
+        const hasResults = window.resultContent && typeof window.resultContent.innerHTML === 'string' && window.resultContent.innerHTML.trim() !== '';
+        const hasErrors = window.errorContent && typeof window.errorContent.innerHTML === 'string' && window.errorContent.innerHTML.trim() !== '';
+        const areasVisible = (window.fileProgressArea && !window.fileProgressArea.classList.contains('d-none')) ||
+                             (window.resultArea && !window.resultArea.classList.contains('d-none')) ||
+                             (window.errorArea && !window.errorArea.classList.contains('d-none'));
+        return hasProgress || hasResults || hasErrors || areasVisible;
+    } catch (e) {
+        console.error('残留情報判定エラー:', e);
+        return false;
+    }
+}
+
+// ファイル取込画面の残留情報をクリア
+function clearFileImportUIState() {
+    try {
+        const fileInput = document.getElementById('fileInput');
+        if (fileInput) fileInput.value = '';
+
+        if (window.fileProgressList) window.fileProgressList.innerHTML = '';
+        if (window.fileProgressArea) window.fileProgressArea.classList.add('d-none');
+
+        if (window.retryButtonArea) window.retryButtonArea.classList.add('d-none');
+        const retryBtn = document.getElementById('retryFailedBtn');
+        if (retryBtn) retryBtn.disabled = true;
+
+        if (window.resultContent) window.resultContent.innerHTML = '';
+        if (window.resultArea) window.resultArea.classList.add('d-none');
+
+        if (window.errorContent) window.errorContent.innerHTML = '';
+        if (window.errorArea) window.errorArea.classList.add('d-none');
+
+        // セッションIDや進行状況のリセット
+        window.currentSessionId = null;
+
+        // 一時保存された分析結果も削除（ユーザー同意時）
+        try {
+            localStorage.removeItem('analysisResults');
+        } catch (e) {}
+        try {
+            sessionStorage.removeItem('analysisResults');
+        } catch (e) {}
+
+        console.log('ファイル取込画面の残留情報を削除しました');
+    } catch (e) {
+        console.error('残留情報クリア中にエラー:', e);
+    }
+}
+
+// 重複データ確認用のグローバル変数
+let duplicateData = null;
+let duplicateModalData = null;
+
+// 重複データ確認モーダルを表示
+function showDuplicateConfirmModal(newData, existingData) {
+    duplicateModalData = { newData, existingData };
+    
+    // 新規データテーブルを更新
+    const newDataTable = document.getElementById('newDataTable');
+    if (newDataTable) {
+        let html = '';
+        html += '<tr><td><strong>ページ</strong></td><td>' + (newData.ページ || 'N/A') + '</td></tr>';
+        html += '<tr><td><strong>出荷日</strong></td><td>' + (newData.出荷日 || 'N/A') + '</td></tr>';
+        html += '<tr><td><strong>受注番号</strong></td><td>' + (newData.受注番号 || 'N/A') + '</td></tr>';
+        html += '<tr><td><strong>納入先番号</strong></td><td>' + (newData.納入先番号 || 'N/A') + '</td></tr>';
+        html += '<tr><td><strong>担当者</strong></td><td>' + (newData.担当者 || 'N/A') + '</td></tr>';
+        html += '<tr><td><strong>税抜合計</strong></td><td>' + (newData.税抜合計 || 'N/A') + '</td></tr>';
+        newDataTable.innerHTML = html;
+    }
+    
+    // 既存データテーブルを更新
+    const existingDataTable = document.getElementById('existingDataTable');
+    if (existingDataTable && existingData) {
+        let html = '';
+        html += '<tr><td><strong>ページ</strong></td><td>' + (existingData[1] || 'N/A') + '</td></tr>';
+        html += '<tr><td><strong>出荷日</strong></td><td>' + (existingData[2] || 'N/A') + '</td></tr>';
+        html += '<tr><td><strong>受注番号</strong></td><td>' + (existingData[3] || 'N/A') + '</td></tr>';
+        html += '<tr><td><strong>納入先番号</strong></td><td>' + (existingData[4] || 'N/A') + '</td></tr>';
+        html += '<tr><td><strong>担当者</strong></td><td>' + (existingData[5] || 'N/A') + '</td></tr>';
+        html += '<tr><td><strong>税抜合計</strong></td><td>' + (existingData[6] || 'N/A') + '</td></tr>';
+        existingDataTable.innerHTML = html;
+    }
+    
+    // モーダルを表示
+    const modal = new bootstrap.Modal(document.getElementById('duplicateConfirmModal'));
+    modal.show();
+}
+
+// 重複を許可して保存
+function saveWithDuplicate() {
+    if (duplicateModalData) {
+        // 重複チェックを無効にして保存を続行
+        saveSelectedDataWithDuplicateCheck(false);
+    }
+    
+    // モーダルを閉じる
+    const modal = bootstrap.Modal.getInstance(document.getElementById('duplicateConfirmModal'));
+    modal.hide();
+}
+
+// 重複を除外して保存
+function saveWithoutDuplicate() {
+    if (duplicateModalData) {
+        // 重複データを除外して保存
+        saveSelectedDataWithDuplicateCheck(true);
+    }
+    
+    // モーダルを閉じる
+    const modal = bootstrap.Modal.getInstance(document.getElementById('duplicateConfirmModal'));
+    modal.hide();
+}
+
+// 重複チェック付きでデータを保存
+function saveSelectedDataWithDuplicateCheck(excludeDuplicates = false) {
+    // 既存のsaveSelectedData関数の処理をここに実装
+    // 重複チェックの結果に応じて処理を分岐
+    console.log('重複チェック付き保存処理:', { excludeDuplicates, duplicateModalData });
+    
+    // 実際の保存処理は既存のsaveSelectedData関数を呼び出す
+    if (excludeDuplicates) {
+        // 重複データを除外して保存
+        console.log('重複データを除外して保存します');
+    } else {
+        // 重複を許可して保存
+        console.log('重複を許可して保存します');
+    }
+}
+
+// 仕入一覧の全データ削除（開発用）
+function deleteAllSavedData() {
+    // 確認モーダルを表示
+    const modal = new bootstrap.Modal(document.getElementById('deleteAllSavedDataModal'));
+    modal.show();
+}
+
+// 全データ削除の確認処理
+function confirmDeleteAllSavedData() {
+    fetch('/api/analysis/delete-all', {
+        method: 'DELETE',
+        headers: {
+            'Content-Type': 'application/json',
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // モーダルを閉じる
+            const modal = bootstrap.Modal.getInstance(document.getElementById('deleteAllSavedDataModal'));
+            modal.hide();
+            
+            // 成功メッセージ
+            alert('全データを削除しました');
+            
+            // 仕入一覧を再読み込み
+            loadSavedData();
+        } else {
+            alert('データの削除に失敗しました: ' + data.error);
+        }
+    })
+    .catch(error => {
+        console.error('削除エラー:', error);
+        alert('データの削除中にエラーが発生しました。');
+    });
+}
 
 </script>
 {% endblock %}

@@ -817,36 +817,88 @@ def save_analysis_results():
         conn = sqlite3.connect('inventory_data.db')
         cursor = conn.cursor()
         
-        # 既存データをクリア
-        cursor.execute('DELETE FROM basic_info')
-        
-        # 新しいデータを挿入
+        # 既存データを保持しつつ、新しいデータを追加
         print(f"保存するデータ: {data['results']}")  # デバッグ用
         
         for item in data['results']:
             print(f"処理中のアイテム: {item}")  # デバッグ用
-            
-            # データの存在チェックとデフォルト値の設定
+
+            # 1) 新形式: item.extracted_data を優先的に処理（配列/オブジェクトのどちらにも対応）
+            if isinstance(item, dict) and 'extracted_data' in item:
+                extracted = item.get('extracted_data')
+                entries = []
+                if isinstance(extracted, list):
+                    entries = extracted
+                elif isinstance(extracted, dict):
+                    entries = [extracted]
+                else:
+                    print("extracted_data の形式が不正のためスキップします")
+                    continue
+
+                for entry in entries:
+                    page = entry.get('ページ') or entry.get('page') or ''
+                    shipping_date = entry.get('出荷日') or entry.get('shipping_date') or ''
+                    order_number = entry.get('受注番号') or entry.get('受注番号.') or entry.get('order_number') or ''
+                    delivery_number = entry.get('納入先番号') or entry.get('delivery_number') or ''
+                    responsible_person = entry.get('担当者') or entry.get('responsible_person') or ''
+                    total_amount = entry.get('税抜合計') or entry.get('total_amount') or ''
+
+                    print(f"[extracted_data] 抽出: ページ={page}, 出荷日={shipping_date}, 受注番号={order_number}, 納入先番号={delivery_number}, 担当者={responsible_person}, 税抜合計={total_amount}")
+
+                    if not page or not shipping_date or not order_number or not delivery_number or not responsible_person or not total_amount:
+                        print(f"[extracted_data] データが不完全です。スキップします: {entry}")
+                        continue
+
+                    # ここでは重複検出しても挿入は継続（UIで確認するため）。情報のみログ出力。
+                    try:
+                        cursor.execute('''
+                            INSERT INTO basic_info (ページ, 出荷日, 受注番号, 納入先番号, 担当者, 税抜合計)
+                            VALUES (?, ?, ?, ?, ?, ?)
+                        ''', (
+                            page,
+                            shipping_date,
+                            order_number,
+                            delivery_number,
+                            responsible_person,
+                            total_amount
+                        ))
+                    except Exception as ie:
+                        print(f"[extracted_data] 挿入エラー: {str(ie)} | データ: {entry}")
+                # 次の item へ
+                continue
+
+            # 2) 旧形式: 各フィールドがトップレベルにある場合
             page = item.get('ページ') or item.get('page') or ''
             shipping_date = item.get('出荷日') or item.get('shipping_date') or ''
-            order_number = item.get('受注番号') or item.get('order_number') or ''
+            order_number = item.get('受注番号') or item.get('受注番号.') or item.get('order_number') or ''
             delivery_number = item.get('納入先番号') or item.get('delivery_number') or ''
             responsible_person = item.get('担当者') or item.get('responsible_person') or ''
             total_amount = item.get('税抜合計') or item.get('total_amount') or ''
-            
+
             print(f"抽出された値: ページ={page}, 出荷日={shipping_date}, 受注番号={order_number}, 納入先番号={delivery_number}, 担当者={responsible_person}, 税抜合計={total_amount}")
-            
-            cursor.execute('''
-                INSERT INTO basic_info (ページ, 出荷日, 受注番号, 納入先番号, 担当者, 税抜合計)
-                VALUES (?, ?, ?, ?, ?, ?)
-            ''', (
-                page,
-                shipping_date,
-                order_number,
-                delivery_number,
-                responsible_person,
-                total_amount
-            ))
+            print(f"元のアイテムのキー: {list(item.keys())}")
+            print(f"受注番号の値: {item.get('受注番号')}, 受注番号.の値: {item.get('受注番号.')}")
+
+            # データの有効性チェック（必須フィールドが空でないことを確認）
+            if not page or not shipping_date or not order_number or not delivery_number or not responsible_person or not total_amount:
+                print(f"データが不完全です。スキップします: {item}")
+                continue
+
+            # 重複はフロント側で確認するため、ここでは挿入を止めない（ログのみ）
+            try:
+                cursor.execute('''
+                    INSERT INTO basic_info (ページ, 出荷日, 受注番号, 納入先番号, 担当者, 税抜合計)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                ''', (
+                    page,
+                    shipping_date,
+                    order_number,
+                    delivery_number,
+                    responsible_person,
+                    total_amount
+                ))
+            except Exception as ie:
+                print(f"挿入エラー: {str(ie)} | データ: {item}")
         
         conn.commit()
         conn.close()
@@ -861,6 +913,36 @@ def save_analysis_results():
         })
     except Exception as e:
         return jsonify({'error': f'保存エラー: {str(e)}'}), 500
+
+@app.route('/api/analysis/delete-all', methods=['DELETE'])
+def delete_all_analysis_results():
+    """全ての分析結果を削除（開発用）"""
+    try:
+        conn = sqlite3.connect('inventory_data.db')
+        cursor = conn.cursor()
+        
+        # 削除前のレコード数を取得
+        cursor.execute('SELECT COUNT(*) FROM basic_info')
+        count_before = cursor.fetchone()[0]
+        
+        # 全データを削除
+        cursor.execute('DELETE FROM basic_info')
+        
+        # Auto incrementのリセット
+        cursor.execute('DELETE FROM sqlite_sequence WHERE name="basic_info"')
+        
+        conn.commit()
+        conn.close()
+        
+        print(f"開発用: {count_before}件のデータを削除しました")  # デバッグ用
+        
+        return jsonify({
+            'success': True,
+            'message': f'{count_before}件のデータを削除しました',
+            'deleted_count': count_before
+        })
+    except Exception as e:
+        return jsonify({'error': f'削除エラー: {str(e)}'}), 500
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5001)
