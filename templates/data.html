@@ -48,9 +48,21 @@
                         <div class="card-body">
                             <form id="uploadForm" enctype="multipart/form-data">
                                 <div class="mb-3">
-                                    <label for="fileInput" class="form-label">PNG画像を選択してください（複数選択可能）</label>
+                                    <label for="fileInput" class="form-label">PNG画像を選択してください（合計20MBまで、複数選択可能）</label>
                                     <input type="file" class="form-control" id="fileInput" name="files" accept=".png" multiple required>
-                                    <div class="form-text">対応形式: PNG画像のみ（各ファイル最大16MB、複数選択可能）</div>
+                                </div>
+                                
+                                <div class="mb-3">
+                                    <div class="form-check form-switch">
+                                        <input class="form-check-input" type="checkbox" id="autoRetrySwitch" checked>
+                                        <label class="form-check-label" for="autoRetrySwitch">
+                                            <strong>自動リトライ</strong>
+                                        </label>
+                                        <div class="form-text">
+                                            <span class="text-success">ON</span>: 失敗したファイルを自動で再処理し、全てのファイルが成功するまで続行します<br>
+                                            <span class="text-muted">OFF</span>: 失敗時は再処理せず、手動でリトライボタンを使用します
+                                        </div>
+                                    </div>
                                 </div>
                                 
                                 <div class="text-center">
@@ -413,6 +425,14 @@ function loadTableData() {
         if (analysisData && analysisData.length > 0) {
             console.log('取得した分析データ:', analysisData);
             console.log('データの長さ:', analysisData.length);
+            console.log('=== データ構造の詳細 ===');
+            analysisData.forEach((item, index) => {
+                console.log(`アイテム ${index}:`, {
+                    hasText: !!item.text,
+                    textLength: item.text ? item.text.length : 0,
+                    textPreview: item.text ? item.text.substring(0, 200) + '...' : 'N/A'
+                });
+            });
             
             // textフィールドからJSONデータを抽出してパース
             let actualData = [];
@@ -420,15 +440,47 @@ function loadTableData() {
                 // すべてのanalysisDataのtextフィールドを処理
                 analysisData.forEach((item, index) => {
                     if (item && item.text) {
-                        // textフィールドからJSON部分を抽出
-                        const jsonMatch = item.text.match(/```json\s*\n(.*?)\n```/s);
-                        if (jsonMatch) {
-                            const parsedData = JSON.parse(jsonMatch[1]);
-                            // パースされたデータが配列の場合は展開、オブジェクトの場合は配列に追加
-                            if (Array.isArray(parsedData)) {
-                                actualData = actualData.concat(parsedData);
-                            } else {
-                                actualData.push(parsedData);
+                        console.log(`処理中のアイテム ${index}:`, item.text.substring(0, 200) + '...');
+                        
+                        // textフィールドからJSON部分を抽出（複数のJSONブロックに対応）
+                        const jsonMatches = item.text.match(/```json\s*\n([\s\S]*?)\n```/g);
+                        
+                        if (jsonMatches) {
+                            console.log(`アイテム ${index} で ${jsonMatches.length} 個のJSONブロックを発見`);
+                            
+                            jsonMatches.forEach((match, matchIndex) => {
+                                try {
+                                    // ```json と ``` を除去してJSON部分のみを取得
+                                    const jsonContent = match.replace(/```json\s*\n/, '').replace(/\n```$/, '');
+                                    console.log(`JSONブロック ${matchIndex} の内容:`, jsonContent.substring(0, 100) + '...');
+                                    
+                                    const parsedData = JSON.parse(jsonContent);
+                                    
+                                    // パースされたデータが配列の場合は展開、オブジェクトの場合は配列に追加
+                                    if (Array.isArray(parsedData)) {
+                                        console.log(`配列データを発見: ${parsedData.length} 件`);
+                                        actualData = actualData.concat(parsedData);
+                                    } else {
+                                        console.log('オブジェクトデータを発見');
+                                        actualData.push(parsedData);
+                                    }
+                                } catch (blockParseError) {
+                                    console.error(`JSONブロック ${matchIndex} のパースエラー:`, blockParseError);
+                                    console.error('問題のJSON内容:', match);
+                                }
+                            });
+                        } else {
+                            // 従来の方法も試行（単一JSONブロック用）
+                            const jsonMatch = item.text.match(/```json\s*\n([\s\S]*?)\n```/s);
+                            if (jsonMatch) {
+                                console.log(`アイテム ${index} で従来の方法でJSONを発見`);
+                                const parsedData = JSON.parse(jsonMatch[1]);
+                                
+                                if (Array.isArray(parsedData)) {
+                                    actualData = actualData.concat(parsedData);
+                                } else {
+                                    actualData.push(parsedData);
+                                }
                             }
                         }
                     }
@@ -436,31 +488,72 @@ function loadTableData() {
                 
                 console.log('パースされた実際のデータ:', actualData);
                 console.log('実際のデータの長さ:', actualData.length);
+                
+                // データ件数の詳細情報を表示
+                if (actualData.length > 0) {
+                    console.log('=== データ件数詳細 ===');
+                    console.log(`総データ件数: ${actualData.length}`);
+                    
+                    // ページ番号の分布を確認
+                    const pageCounts = {};
+                    actualData.forEach(item => {
+                        const page = item.ページ || '不明';
+                        pageCounts[page] = (pageCounts[page] || 0) + 1;
+                    });
+                    
+                    console.log('ページ別データ件数:', pageCounts);
+                    
+                    // 10ページを超えるデータがあるかチェック
+                    const pages = Object.keys(pageCounts).filter(p => !isNaN(p) && parseInt(p) > 10);
+                    if (pages.length > 0) {
+                        console.log('⚠️ 10ページを超えるデータを発見:', pages);
+                        console.log('これらのページのデータ件数:', pages.map(p => `${p}ページ: ${pageCounts[p]}件`));
+                    }
+                }
             } catch (parseError) {
                 console.error('JSONパースエラー:', parseError);
             }
             
-            // 実際のデータを表示
-            const debugArea = document.getElementById('debugDataArea');
-            if (debugArea) {
-                if (actualData.length > 0) {
-                    debugArea.innerHTML = `
-                        <h6>パースされたデータ（${actualData.length}件）:</h6>
-                        <pre>${JSON.stringify(actualData, null, 2)}</pre>
-                    `;
-                    
-                    // グローバル変数にデータを設定
-                    currentData = actualData;
-                    
-                    // テーブルにもデータを表示
-                    displayTableData(actualData);
-                } else {
-                    debugArea.innerHTML = `
-                        <h6>元のデータ:</h6>
-                        <pre>${JSON.stringify(analysisData, null, 2)}</pre>
-                    `;
+                            // 実際のデータを表示
+                const debugArea = document.getElementById('debugDataArea');
+                if (debugArea) {
+                    if (actualData.length > 0) {
+                        // 大量データの場合は表示を制限
+                        const displayData = actualData.length > 100 ? 
+                            actualData.slice(0, 100).concat([{ 
+                                ページ: '...', 
+                                出荷日: `他 ${actualData.length - 100} 件のデータ`, 
+                                受注番号: '表示省略', 
+                                納入先番号: '', 
+                                担当者: '', 
+                                税抜合計: '' 
+                            }]) : 
+                            actualData;
+                        
+                        debugArea.innerHTML = `
+                            <h6>パースされたデータ（${actualData.length}件）:</h6>
+                            <div class="alert alert-info">
+                                <strong>データ処理状況:</strong><br>
+                                • 総データ件数: ${actualData.length}件<br>
+                                • 表示件数: ${displayData.length}件<br>
+                                ${actualData.length > 100 ? `• 表示制限: 最初の100件のみ表示（他は省略）<br>` : ''}
+                                • ページ範囲: ${Math.min(...actualData.map(d => parseInt(d.ページ) || 0))}〜${Math.max(...actualData.map(d => parseInt(d.ページ) || 0))}ページ
+                            </div>
+                            <pre>${JSON.stringify(displayData, null, 2)}</pre>
+                        `;
+                        
+                        // グローバル変数にデータを設定
+                        currentData = actualData;
+                        
+                        // テーブルにもデータを表示
+                        displayTableData(actualData);
+                    } else {
+                        debugArea.innerHTML = `
+                            <h6>元のデータ:</h6>
+                            <pre>${JSON.stringify(analysisData, null, 2)}</pre>
+                        `;
+                    }
                 }
-            }
         } else {
             // データがない場合
             console.log('分析データが見つかりません');
@@ -468,6 +561,10 @@ function loadTableData() {
             if (debugArea) {
                 debugArea.innerHTML = '<p>分析データが見つかりません</p>';
             }
+            
+            // グローバル変数をクリア
+            currentData = [];
+            displayTableData([]);
         }
     } catch (error) {
         console.error('データの読み込みに失敗しました:', error);
@@ -480,14 +577,26 @@ function loadTableData() {
 
 // 金額にカンマを追加する関数
 function addCommas(value) {
+    // 値が存在しない、または無効な場合は 'N/A' を返す
+    if (value === undefined || value === null || value === '') {
+        return 'N/A';
+    }
+    
     if (typeof value === 'string' && value !== 'N/A') {
         // 既存のカンマを除去してから数値として処理
         const numValue = value.replace(/,/g, '');
-        if (!isNaN(numValue)) {
+        if (!isNaN(numValue) && numValue !== '') {
             return parseInt(numValue).toLocaleString();
         }
     }
-    return value;
+    
+    // 数値の場合
+    if (typeof value === 'number' && !isNaN(value)) {
+        return value.toLocaleString();
+    }
+    
+    // その他の場合は 'N/A' を返す
+    return 'N/A';
 }
 
 // テーブルにデータを表示する関数
@@ -505,7 +614,7 @@ function displayTableData(data) {
         html += `<td>${item.受注番号 || 'N/A'}</td>`;
         html += `<td>${item.納入先番号 || 'N/A'}</td>`;
         html += `<td>${item.担当者 || 'N/A'}</td>`;
-        html += `<td>${addCommas(item.税抜合計) || 'N/A'}</td>`;
+        html += `<td>${addCommas(item.税抜合計)}</td>`;
         html += '<td>';
         html += '<div class="d-flex gap-1">';
         html += `<button type="button" class="btn btn-warning btn-sm" onclick="editRow(${index})">編集</button>`;
@@ -895,6 +1004,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
 // 保存されたデータを読み込んで表示
 function loadSavedData() {
+    console.log('loadSavedData() が呼び出されました');
+    
     fetch('/api/analysis/results', {
         method: 'GET',
         headers: {
@@ -903,7 +1014,11 @@ function loadSavedData() {
     })
     .then(response => response.json())
     .then(data => {
+        console.log('APIレスポンス:', data);
+        
         if (data.success) {
+            console.log(`保存されたデータ ${data.results.length} 件を取得しました`);
+            console.log('データの内容:', data.results);
             displaySavedData(data.results);
         } else {
             console.error('保存されたデータの取得に失敗しました:', data.error);
@@ -918,27 +1033,55 @@ function loadSavedData() {
 
 // 保存されたデータをテーブルに表示（操作ボタンなし）
 function displaySavedData(data) {
+    console.log('displaySavedData() が呼び出されました');
+    console.log('表示するデータ:', data);
+    
     const tableBody = document.getElementById('savedDataTableBody');
-    if (!tableBody) return;
+    if (!tableBody) {
+        console.error('savedDataTableBody が見つかりません');
+        return;
+    }
     
     let html = '';
     
     if (data.length === 0) {
-        html = '<tr><td colspan="6" class="text-center text-muted">保存されたデータがありません</td></tr>';
+        console.log('データが0件のため、空のメッセージを表示');
+        html = '<tr><td colspan="6" class="text-center text-muted py-4">';
+        html += '<div class="text-muted">';
+        html += '<i class="fas fa-database mb-2" style="font-size: 2rem; opacity: 0.5;"></i><br>';
+        html += '<strong>保存されたデータがありません</strong><br>';
+        html += '<small class="text-muted">ファイル取込タブで画像を分析してから、基本情報タブでデータを保存してください</small>';
+        html += '</div></td></tr>';
     } else {
+        console.log(`${data.length} 件のデータをテーブルに表示します`);
         data.forEach((item, index) => {
+            console.log(`行 ${index + 1}:`, item);
             html += '<tr>';
             html += `<td>${item.ページ || 'N/A'}</td>`;
             html += `<td>${item.出荷日 || 'N/A'}</td>`;
             html += `<td>${item.受注番号 || 'N/A'}</td>`;
             html += `<td>${item.納入先番号 || 'N/A'}</td>`;
             html += `<td>${item.担当者 || 'N/A'}</td>`;
-            html += `<td>${addCommas(item.税抜合計) || 'N/A'}</td>`;
+            html += `<td>${addCommas(item.税抜合計)}</td>`;
             html += '</tr>';
         });
     }
     
+    console.log('更新前のテーブル内容:', tableBody.innerHTML);
     tableBody.innerHTML = html;
+    console.log('更新後のテーブル内容:', tableBody.innerHTML);
+    console.log('テーブルの更新が完了しました');
+    
+    // 更新後のテーブル行数を確認
+    const rows = tableBody.querySelectorAll('tr');
+    console.log(`更新後のテーブル行数: ${rows.length}`);
+    
+    // 各行の内容を確認
+    rows.forEach((row, index) => {
+        const cells = row.querySelectorAll('td');
+        const cellTexts = Array.from(cells).map(cell => cell.textContent.trim());
+        console.log(`行 ${index + 1} の内容:`, cellTexts);
+    });
 }
 
 // ファイルアップロードフォームの処理
@@ -971,10 +1114,8 @@ function handleFileUpload(event) {
         return;
     }
     
-    if (files.length > 10) {
-        alert('最大10ファイルまで選択できます。');
-        return;
-    }
+    // ファイル数の制限を削除（合計サイズで制限）
+    // 20MB以下のファイルなら無制限に選択可能
     
     // ボタンの状態を変更
     const analyzeBtn = document.getElementById('analyzeBtn');
@@ -1041,11 +1182,29 @@ function handleFileUpload(event) {
 function displayFileList(files) {
     if (!fileProgressList || !fileProgressArea) return;
     
-    // 常に進捗表示エリアを表示
-    let html = '';
+    // 合計サイズを計算
+    let totalSize = 0;
+    let validFiles = 0;
+    
     for (let i = 0; i < files.length; i++) {
         const file = files[i];
-        if (isValidPNGFile(file) && file.size <= 16 * 1024 * 1024) {
+        if (isValidPNGFile(file) && file.size <= 20 * 1024 * 1024) {
+            totalSize += file.size;
+            validFiles++;
+        }
+    }
+    
+    const totalSizeMB = (totalSize / (1024 * 1024)).toFixed(2);
+    
+    // 常に進捗表示エリアを表示
+    let html = `<div class="mb-3 p-2 bg-light rounded">`;
+    html += `<strong>選択されたファイル: ${validFiles}個</strong>`;
+    html += `<span class="ms-3 text-muted">合計サイズ: ${totalSizeMB}MB</span>`;
+    html += `</div>`;
+    
+    for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        if (isValidPNGFile(file) && file.size <= 20 * 1024 * 1024) {
             html += `<div class="file-progress-item" data-file-index="${i}">`;
             html += `<span class="file-name">${file.name}</span>`;
             html += `<span class="file-status">⏳ 待機中</span>`;
@@ -1105,17 +1264,29 @@ function updateCurrentProcessingStatus(processingInfo) {
 
 // リトライボタンの表示/非表示を制御
 function checkRetryButtonVisibility(allResults, isCompleted) {
-    if (!retryButtonArea || !retryFailedBtn) return;
+    const retryButtonArea = document.getElementById('retryButtonArea');
+    const retryFailedBtn = document.getElementById('retryFailedBtn');
+    
+    if (!retryButtonArea || !retryFailedBtn) {
+        console.warn('Retry button elements not found');
+        return;
+    }
     
     if (isCompleted && allResults.some(result => result.failed)) {
+        console.log('Showing retry button - failed files detected');
         showElement(retryButtonArea);
     } else {
+        console.log('Hiding retry button - no failed files or not completed');
         hideElement(retryButtonArea);
     }
 }
 
 // セッション結果のポーリング監視を開始
 function startPollingForResults(sessionId, totalFiles) {
+    // セッションIDをグローバル変数に保存
+    currentSessionId = sessionId;
+    console.log('Starting polling for session:', sessionId);
+    
     let lastResultCount = 0;
     let allResults = [];
     
@@ -1140,33 +1311,63 @@ function startPollingForResults(sessionId, totalFiles) {
             
             if (data.completed) {
                 clearInterval(pollInterval);
-                // ボタンの状態をリセット
-                const analyzeBtn = document.getElementById('analyzeBtn');
-                const btnText = document.getElementById('btnText');
-                const btnSpinner = document.getElementById('btnSpinner');
                 
-                if (analyzeBtn && btnText && btnSpinner) {
-                    analyzeBtn.disabled = false;
-                    btnText.textContent = '分析開始';
-                    btnSpinner.classList.add('d-none');
+                console.log('Analysis completed, checking for failed files...');
+                console.log('All results:', allResults);
+                console.log('Failed results:', allResults.filter(r => r.failed));
+                
+                const failedFiles = allResults.filter(r => r.failed);
+                const autoRetrySwitch = document.getElementById('autoRetrySwitch');
+                
+                if (failedFiles.length > 0 && autoRetrySwitch && autoRetrySwitch.checked) {
+                    // 自動リトライがONの場合、失敗したファイルを自動でリトライ
+                    console.log('Auto-retry enabled, starting automatic retry for failed files...');
+                    startAutoRetry(currentSessionId, failedFiles);
+                } else if (failedFiles.length > 0) {
+                    // 自動リトライがOFFの場合、手動リトライボタンを表示
+                    console.log('Auto-retry disabled, showing manual retry button...');
+                    checkRetryButtonVisibility(allResults, true);
+                    
+                    // ボタンの状態をリセット
+                    const analyzeBtn = document.getElementById('analyzeBtn');
+                    const btnText = document.getElementById('btnText');
+                    const btnSpinner = document.getElementById('btnSpinner');
+                    
+                    if (analyzeBtn && btnText && btnSpinner) {
+                        analyzeBtn.disabled = false;
+                        btnText.textContent = '分析開始';
+                        btnSpinner.classList.add('d-none');
+                    }
+                } else {
+                    // 全て成功した場合
+                    console.log('All files processed successfully!');
+                    
+                    // ボタンの状態をリセット
+                    const analyzeBtn = document.getElementById('analyzeBtn');
+                    const btnText = document.getElementById('btnText');
+                    const btnSpinner = document.getElementById('btnSpinner');
+                    
+                    if (analyzeBtn && btnText && btnSpinner) {
+                        analyzeBtn.disabled = false;
+                        btnText.textContent = '分析開始';
+                        btnSpinner.classList.add('d-none');
+                    }
+                    
+                    // 基本情報タブに切り替え
+                    const basicInfoTab = document.getElementById('basic-info-tab');
+                    if (basicInfoTab) {
+                        const tab = new bootstrap.Tab(basicInfoTab);
+                        tab.show();
+                        
+                        // タブ切り替え後にデータを読み込む
+                        setTimeout(() => {
+                            loadTableData();
+                        }, 100);
+                    }
                 }
-                
-                checkRetryButtonVisibility(allResults, true);
                 
                 if (data.errors && data.errors.length > 0) {
                     console.warn('Processing errors:', data.errors);
-                }
-                
-                // 基本情報タブに切り替え
-                const basicInfoTab = document.getElementById('basic-info-tab');
-                if (basicInfoTab) {
-                    const tab = new bootstrap.Tab(basicInfoTab);
-                    tab.show();
-                    
-                    // タブ切り替え後にデータを読み込む
-                    setTimeout(() => {
-                        loadTableData();
-                    }, 100);
                 }
             }
             
@@ -1240,12 +1441,219 @@ function displaySequentialResults(results) {
 // グローバル変数
 let currentSessionId = null;
 
-// リトライボタンのクリックイベント
+// 自動再リトライ機能（全体の再処理）
+async function startAutoRetry(sessionId, failedFiles) {
+    console.log(`Starting auto-retry for ${failedFiles.length} failed files (overall retry)...`);
+    
+    // 進捗表示を更新
+    updateAutoRetryProgress(failedFiles);
+    
+    try {
+        const response = await fetch(`/api/dify/session/${sessionId}/retry-failed`, {
+            method: 'POST'
+        });
+        
+        const result = await response.json();
+        
+        if (!response.ok) {
+            throw new Error(result.error || 'Auto-retry failed');
+        }
+        
+        console.log('Auto-retry started successfully:', result.message);
+        
+        // 自動再リトライの進捗を監視（各ファイルの3回リトライは維持）
+        startAutoRetryPolling(sessionId);
+        
+    } catch (error) {
+        console.error('Auto-retry error:', error);
+        alert('自動再リトライの開始に失敗しました: ' + error.message);
+        
+        // エラー時は手動リトライボタンを表示
+        checkRetryButtonVisibility(failedFiles, true);
+        
+        // ボタンの状態をリセット
+        const analyzeBtn = document.getElementById('analyzeBtn');
+        const btnText = document.getElementById('btnText');
+        const btnSpinner = document.getElementById('btnSpinner');
+        
+        if (analyzeBtn && btnText && btnSpinner) {
+            analyzeBtn.disabled = false;
+            btnText.textContent = '分析開始';
+            btnSpinner.classList.add('d-none');
+        }
+    }
+}
+
+// 自動リトライの進捗表示を更新
+function updateAutoRetryProgress(failedFiles) {
+    const fileProgressList = document.getElementById('fileProgressList');
+    if (!fileProgressList) return;
+    
+    failedFiles.forEach(failedFile => {
+        const fileItem = fileProgressList.querySelector(`[data-file-index="${failedFile.file_index}"]`);
+        if (fileItem) {
+            const statusElement = fileItem.querySelector('.file-status');
+            if (statusElement) {
+                statusElement.innerHTML = `🔄 自動リトライ中 (1回目)`;
+                statusElement.style.color = '#ffc107';
+            }
+        }
+    });
+    
+    // 自動リトライ中のメッセージを表示
+    const progressArea = document.getElementById('fileProgressArea');
+    if (progressArea) {
+        const header = progressArea.querySelector('.card-header h6');
+        if (header) {
+            header.innerHTML = '選択されたファイル <span class="badge bg-warning">自動リトライ中</span>';
+        }
+    }
+}
+
+// 自動リトライ回数に応じて表示を更新
+function updateAutoRetryAttemptDisplay(failedFiles, attemptNumber) {
+    const fileProgressList = document.getElementById('fileProgressList');
+    if (!fileProgressList) return;
+    
+    failedFiles.forEach(failedFile => {
+        const fileItem = fileProgressList.querySelector(`[data-file-index="${failedFile.file_index}"]`);
+        if (fileItem) {
+            const statusElement = fileItem.querySelector('.file-status');
+            if (statusElement) {
+                statusElement.innerHTML = `🔄 自動リトライ中 (${attemptNumber}回目)`;
+                statusElement.style.color = '#ffc107';
+            }
+        }
+    });
+    
+    // 自動リトライ回数を表示
+    const progressArea = document.getElementById('fileProgressArea');
+    if (progressArea) {
+        const header = progressArea.querySelector('.card-header h6');
+        if (header) {
+            header.innerHTML = `選択されたファイル <span class="badge bg-warning">自動リトライ中 (${attemptNumber}回目)</span>`;
+        }
+    }
+}
+
+// 自動リトライの進捗を監視
+function startAutoRetryPolling(sessionId) {
+    let retryAttempts = 0;
+    const maxRetryAttempts = 5; // 最大5回まで自動リトライ
+    
+    const pollInterval = setInterval(async () => {
+        try {
+            retryAttempts++;
+            console.log(`Auto-retry attempt ${retryAttempts}/${maxRetryAttempts}`);
+            
+            const response = await fetch(`/api/dify/session/${sessionId}/status`);
+            const data = await response.json();
+            
+            if (!response.ok) {
+                throw new Error(data.error || 'Status check failed');
+            }
+            
+            // 現在処理中のファイルの状態を更新（1回目、2回目、3回目の表示）
+            if (data.current_processing) {
+                updateCurrentProcessingStatus(data.current_processing);
+            }
+            
+            if (data.completed) {
+                clearInterval(pollInterval);
+                
+                const allResults = data.results || [];
+                const stillFailed = allResults.filter(r => r.failed);
+                
+                if (stillFailed.length > 0 && retryAttempts < maxRetryAttempts) {
+                    // まだ失敗がある場合、再度自動リトライ
+                    console.log(`Still ${stillFailed.length} failed files, continuing auto-retry...`);
+                    
+                    // 自動リトライ回数に応じて表示を更新
+                    updateAutoRetryAttemptDisplay(stillFailed, retryAttempts + 1);
+                    
+                    startAutoRetry(sessionId, stillFailed);
+                } else if (stillFailed.length > 0) {
+                    // 最大リトライ回数に達した場合、手動リトライボタンを表示
+                    console.log('Max auto-retry attempts reached, showing manual retry button...');
+                    checkRetryButtonVisibility(allResults, true);
+                    
+                    // ボタンの状態をリセット
+                    const analyzeBtn = document.getElementById('analyzeBtn');
+                    const btnText = document.getElementById('btnText');
+                    const btnSpinner = document.getElementById('btnSpinner');
+                    
+                    if (analyzeBtn && btnText && btnSpinner) {
+                        analyzeBtn.disabled = false;
+                        btnText.textContent = '分析開始';
+                        btnSpinner.classList.add('d-none');
+                    }
+                } else {
+                    // 全て成功した場合
+                    console.log('All files processed successfully after auto-retry!');
+                    
+                    // ボタンの状態をリセット
+                    const analyzeBtn = document.getElementById('analyzeBtn');
+                    const btnText = document.getElementById('btnText');
+                    const btnSpinner = document.getElementById('btnSpinner');
+                    
+                    if (analyzeBtn && btnText && btnSpinner) {
+                        analyzeBtn.disabled = false;
+                        btnText.textContent = '分析開始';
+                        btnSpinner.classList.add('d-none');
+                    }
+                    
+                    // 基本情報タブに切り替え
+                    const basicInfoTab = document.getElementById('basic-info-tab');
+                    if (basicInfoTab) {
+                        const tab = new bootstrap.Tab(basicInfoTab);
+                        tab.show();
+                        
+                        // タブ切り替え後にデータを読み込む
+                        setTimeout(() => {
+                            loadTableData();
+                        }, 100);
+                    }
+                }
+            }
+            
+        } catch (error) {
+            clearInterval(pollInterval);
+            console.error('Auto-retry polling error:', error);
+            
+            // エラー時は手動リトライボタンを表示
+            alert('自動リトライの監視中にエラーが発生しました。手動でリトライしてください。');
+            
+            const analyzeBtn = document.getElementById('analyzeBtn');
+            const btnText = document.getElementById('btnText');
+            const btnSpinner = document.getElementById('btnSpinner');
+            
+            if (analyzeBtn && btnText && btnSpinner) {
+                analyzeBtn.disabled = false;
+                btnText.textContent = '分析開始';
+                btnSpinner.classList.add('d-none');
+            }
+        }
+    }, 3000); // 3秒間隔で監視
+}
+
+// 手動リトライボタンのクリックイベント
 async function handleRetryFailedClick(event) {
     event.preventDefault();
     
+    console.log('Manual retry button clicked, currentSessionId:', currentSessionId);
+    
+    if (!currentSessionId) {
+        alert('リトライするセッションが見つかりません。新しい分析を開始してください。');
+        return;
+    }
+    
     try {
-        hideElement(retryButtonArea);
+        const retryButtonArea = document.getElementById('retryButtonArea');
+        if (retryButtonArea) {
+            hideElement(retryButtonArea);
+        }
+        
+        console.log('Sending manual retry request to:', `/api/dify/session/${currentSessionId}/retry-failed`);
         
         const response = await fetch(`/api/dify/session/${currentSessionId}/retry-failed`, {
             method: 'POST'
@@ -1254,16 +1662,22 @@ async function handleRetryFailedClick(event) {
         const result = await response.json();
         
         if (!response.ok) {
-            throw new Error(result.error || 'Batch retry failed');
+            throw new Error(result.error || 'Manual retry failed');
         }
         
-        console.log('Batch retry started successfully:', result.message);
+        console.log('Manual retry started successfully:', result.message);
         
+        // 手動リトライ処理を開始
         startPollingForResults(currentSessionId, 0);
         
     } catch (error) {
-        console.error('Batch retry error:', error);
-        showElement(retryButtonArea);
+        console.error('Manual retry error:', error);
+        alert('手動リトライの開始に失敗しました: ' + error.message);
+        
+        const retryButtonArea = document.getElementById('retryButtonArea');
+        if (retryButtonArea) {
+            showElement(retryButtonArea);
+        }
     }
 }
 
@@ -1448,7 +1862,7 @@ function displayUploadResults(results) {
                         html += `<td>${item.受注番号 || 'N/A'}</td>`;
                         html += `<td>${item.納入先番号 || 'N/A'}</td>`;
                         html += `<td>${item.担当者 || 'N/A'}</td>`;
-                        html += `<td>${addCommas(item.税抜合計) || 'N/A'}</td>`;
+                        html += `<td>${addCommas(item.税抜合計)}</td>`;
                         html += '</tr>';
                     });
                 } else if (typeof data === 'object') {
@@ -1459,7 +1873,7 @@ function displayUploadResults(results) {
                     html += `<td>${data.受注番号 || 'N/A'}</td>`;
                     html += `<td>${data.納入先番号 || 'N/A'}</td>`;
                     html += `<td>${item.担当者 || 'N/A'}</td>`;
-                    html += `<td>${addCommas(data.税抜合計) || 'N/A'}</td>`;
+                    html += `<td>${addCommas(data.税抜合計)}</td>`;
                     html += '</tr>';
                 }
             }
@@ -1497,9 +1911,9 @@ document.addEventListener('DOMContentLoaded', function() {
                         continue;
                     }
                     
-                    if (file.size > 16 * 1024 * 1024) {
-                        continue;
-                    }
+                            if (file.size > 20 * 1024 * 1024) {
+            continue;
+        }
                     
                     validFiles++;
                     totalSize += file.size;
@@ -1509,6 +1923,10 @@ document.addEventListener('DOMContentLoaded', function() {
                     fileInput.value = '';
                     return;
                 }
+                
+                // 合計サイズを表示
+                const totalSizeMB = (totalSize / (1024 * 1024)).toFixed(2);
+                console.log(`選択されたファイル: ${validFiles}個, 合計サイズ: ${totalSizeMB}MB`);
                 
                 // 常に進捗表示エリアを表示
                 displayFileList(files);

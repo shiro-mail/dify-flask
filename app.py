@@ -15,7 +15,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 app = Flask(__name__)
-app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
+app.config['MAX_CONTENT_LENGTH'] = 20 * 1024 * 1024  # 20MB max file size
 
 # データベースの初期化
 def init_database():
@@ -56,11 +56,11 @@ if not DIFY_API_KEY or not DIFY_WORKFLOW_ID:
 
 @app.route('/')
 def index():
-    return render_template('upload.html')
+    return render_template('data.html')
 
 @app.route('/upload')
 def upload_page():
-    return render_template('upload.html')
+    return render_template('data.html')
 
 @app.route('/data')
 def data_page():
@@ -821,17 +821,31 @@ def save_analysis_results():
         cursor.execute('DELETE FROM basic_info')
         
         # 新しいデータを挿入
+        print(f"保存するデータ: {data['results']}")  # デバッグ用
+        
         for item in data['results']:
+            print(f"処理中のアイテム: {item}")  # デバッグ用
+            
+            # データの存在チェックとデフォルト値の設定
+            page = item.get('ページ') or item.get('page') or ''
+            shipping_date = item.get('出荷日') or item.get('shipping_date') or ''
+            order_number = item.get('受注番号') or item.get('order_number') or ''
+            delivery_number = item.get('納入先番号') or item.get('delivery_number') or ''
+            responsible_person = item.get('担当者') or item.get('responsible_person') or ''
+            total_amount = item.get('税抜合計') or item.get('total_amount') or ''
+            
+            print(f"抽出された値: ページ={page}, 出荷日={shipping_date}, 受注番号={order_number}, 納入先番号={delivery_number}, 担当者={responsible_person}, 税抜合計={total_amount}")
+            
             cursor.execute('''
                 INSERT INTO basic_info (ページ, 出荷日, 受注番号, 納入先番号, 担当者, 税抜合計)
                 VALUES (?, ?, ?, ?, ?, ?)
             ''', (
-                item.get('ページ', ''),
-                item.get('出荷日', ''),
-                item.get('受注番号', ''),
-                item.get('納入先番号', ''),
-                item.get('担当者', ''),
-                item.get('税抜合計', '')
+                page,
+                shipping_date,
+                order_number,
+                delivery_number,
+                responsible_person,
+                total_amount
             ))
         
         conn.commit()
