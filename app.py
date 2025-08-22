@@ -28,7 +28,7 @@ if not DIFY_API_KEY or not DIFY_WORKFLOW_ID:
 
 @app.route('/')
 def index():
-    return render_template('index.html')
+    return render_template('upload.html')
 
 @app.route('/upload')
 def upload_page():
@@ -744,9 +744,34 @@ def retry_failed_files(session_id):
     except Exception as e:
         return jsonify({'error': f'Batch retry error: {str(e)}'}), 500
 
-@app.route('/about')
-def about():
-    return render_template('about.html')
+# 分析結果を保存するためのグローバル変数
+analysis_results = []
+
+@app.route('/api/analysis/results', methods=['GET'])
+def get_analysis_results():
+    """分析結果の一覧を取得"""
+    return jsonify({
+        'success': True,
+        'results': analysis_results
+    })
+
+@app.route('/api/analysis/results', methods=['POST'])
+def save_analysis_results():
+    """分析結果を保存"""
+    try:
+        data = request.get_json()
+        if not data or 'results' not in data:
+            return jsonify({'error': 'Invalid data format'}), 400
+        
+        global analysis_results
+        analysis_results = data['results']
+        
+        return jsonify({
+            'success': True,
+            'message': f'{len(analysis_results)}件の分析結果を保存しました'
+        })
+    except Exception as e:
+        return jsonify({'error': f'保存エラー: {str(e)}'}), 500
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5001)

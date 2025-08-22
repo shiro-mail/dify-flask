@@ -60,14 +60,7 @@ onDOMReady(() => {
         return;
     }
     
-    const useSequential = document.getElementById('useSequential');
-    if (useSequential) {
-        useSequential.addEventListener('change', () => {
-            if (fileInput.files.length > 0) {
-                displayFileList(fileInput.files);
-            }
-        });
-    }
+
     
     fileInput.addEventListener('change', (e) => {
         const files = e.target.files;
@@ -96,6 +89,7 @@ onDOMReady(() => {
             
             showMessage(`${validFiles}個のファイルを選択 (合計: ${formatFileSize(totalSize)})`, 'success');
             
+            // 常に進捗表示エリアを表示
             displayFileList(files);
         }
     });
@@ -131,25 +125,8 @@ onDOMReady(() => {
         try {
             setButtonLoading(analyzeBtn, true);
             
-            const useSequential = document.getElementById('useSequential');
-            if (useSequential && useSequential.checked) {
-                await startSequentialProcessing(validFiles);
-            } else {
-                const response = await fetch('/api/dify/analyze-multiple', {
-                    method: 'POST',
-                    body: formData
-                });
-                
-                const result = await response.json();
-                
-                if (response.ok && result.success) {
-                    displayResult(result.results);
-                } else {
-                    const errorMessage = result.error || '分析に失敗しました';
-                    displayError(errorMessage);
-                }
-                setButtonLoading(analyzeBtn, false);
-            }
+            // 常に逐次処理を使用
+            await startSequentialProcessing(validFiles);
         } catch (error) {
             const errorMessage = '分析中にエラーが発生しました';
             displayError(errorMessage);
@@ -307,24 +284,48 @@ onDOMReady(() => {
         updateFileProgress(results);
         
         checkRetryButtonVisibility(results, false);
+        
+        // 分析結果を保存
+        saveAnalysisResults(results);
+        
+        // 分析結果をローカルストレージにも保存（データ表示ページ用）
+        try {
+            // トップページに表示されているデータ形式で保存
+            let displayData = [];
+            results.forEach(item => {
+                if (item.result && item.result.extracted_data) {
+                    // extracted_dataが配列の場合は展開
+                    if (Array.isArray(item.result.extracted_data)) {
+                        displayData = displayData.concat(item.result.extracted_data);
+                    } else {
+                        displayData.push(item.result.extracted_data);
+                    }
+                } else if (item.result) {
+                    displayData.push(item.result);
+                } else {
+                    displayData.push(item);
+                }
+            });
+            
+            localStorage.setItem('analysisResults', JSON.stringify(displayData));
+            sessionStorage.setItem('analysisResults', JSON.stringify(displayData));
+            console.log('分析結果をローカルストレージに保存しました:', displayData);
+        } catch (error) {
+            console.error('ローカルストレージへの保存に失敗しました:', error);
+        }
     }
     
     function displayFileList(files) {
         if (!fileProgressList || !fileProgressArea) return;
         
-        const useSequential = document.getElementById('useSequential');
-        if (!useSequential || !useSequential.checked) {
-            hideElement(fileProgressArea);
-            return;
-        }
-        
+        // 常に進捗表示エリアを表示
         let html = '';
         for (let i = 0; i < files.length; i++) {
             const file = files[i];
             if (isValidPNGFile(file) && file.size <= 16 * 1024 * 1024) {
                 html += `<div class="file-progress-item" data-file-index="${i}">`;
                 html += `<span class="file-name">${file.name}</span>`;
-                html += `<span class="file-status">⏳</span>`;
+                html += `<span class="file-status">⏳ 待機中</span>`;
                 html += `</div>`;
             }
         }
@@ -342,13 +343,15 @@ onDOMReady(() => {
                 const statusElement = fileItem.querySelector('.file-status');
                 if (statusElement) {
                     const elapsedText = result.elapsed_seconds ? ` (${result.elapsed_seconds}秒)` : '';
+                    const attemptText = result.current_attempt ? ` (${result.current_attempt}回目)` : '';
+                    
                     if (result.failed) {
-                        statusElement.innerHTML = `❌${elapsedText}`;
+                        statusElement.innerHTML = `❌ 失敗${attemptText}${elapsedText}`;
                         statusElement.style.color = '#dc3545';
                         fileItem.classList.add('failed');
                         fileItem.classList.remove('completed', 'processing');
                     } else {
-                        statusElement.innerHTML = `✅${elapsedText}`;
+                        statusElement.innerHTML = `✅ 完了${attemptText}${elapsedText}`;
                         statusElement.style.color = '#28a745';
                         fileItem.classList.add('completed');
                         fileItem.classList.remove('failed', 'processing');
@@ -418,5 +421,50 @@ onDOMReady(() => {
     
     if (retryFailedBtn) {
         retryFailedBtn.addEventListener('click', handleRetryFailedClick);
+    }
+    
+    // 分析結果を保存する関数
+    async function saveAnalysisResults(results) {
+        try {
+            // 成功した結果のみを抽出して保存用データを作成
+            const successfulResults = results.filter(result => !result.failed);
+            
+            if (successfulResults.length === 0) {
+                console.log('保存する分析結果がありません');
+                return;
+            }
+            
+            // 保存用データの形式を整える
+            const saveData = successfulResults.map(result => {
+                const extractedData = result.result.extracted_data || {};
+                return {
+                    filename: result.filename,
+                    file_index: result.file_index,
+                    extracted_data: extractedData,
+                    completed_at: result.completed_at,
+                    elapsed_seconds: result.elapsed_seconds
+                };
+            });
+            
+            const response = await fetch('/api/analysis/results', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    results: saveData
+                })
+            });
+            
+            const result = await response.json();
+            
+            if (response.ok) {
+                console.log('分析結果を保存しました:', result.message);
+            } else {
+                console.error('分析結果の保存に失敗しました:', result.error);
+            }
+        } catch (error) {
+            console.error('分析結果の保存中にエラーが発生しました:', error);
+        }
     }
 });
