@@ -1353,6 +1353,11 @@ function displayFileList(files) {
     }
     
     fileProgressList.innerHTML = html;
+    // ヘッダーを初期状態に戻す（自動リトライ中バッジの残留対策）
+    const header = document.querySelector('#fileProgressArea .card-header h6');
+    if (header) {
+        header.textContent = '選択されたファイル';
+    }
     showElement(fileProgressArea);
 }
 
@@ -2136,7 +2141,12 @@ function clearFileImportUIState() {
         if (fileInput) fileInput.value = '';
 
         if (window.fileProgressList) window.fileProgressList.innerHTML = '';
-        if (window.fileProgressArea) window.fileProgressArea.classList.add('d-none');
+        if (window.fileProgressArea) {
+            // ヘッダーを初期状態へ（自動リトライ中のオレンジ表示を除去）
+            const header = window.fileProgressArea.querySelector('.card-header h6');
+            if (header) header.textContent = '選択されたファイル';
+            window.fileProgressArea.classList.add('d-none');
+        }
 
         if (window.retryButtonArea) window.retryButtonArea.classList.add('d-none');
         const retryBtn = document.getElementById('retryFailedBtn');
