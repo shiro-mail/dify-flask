@@ -1,0 +1,367 @@
+app:
+  description: ''
+  icon: 🤖
+  icon_background: '#FFEAD5'
+  mode: workflow
+  name: YES部品１枚_ver1.0
+  use_icon_as_answer_icon: false
+dependencies:
+- current_identifier: null
+  type: marketplace
+  value:
+    marketplace_plugin_unique_identifier: langgenius/gemini:0.3.0@3d5be07581c53609a49d2bbb47be98c2e10820591bfc99f686b005d2c1ef95d9
+kind: app
+version: 0.4.0
+workflow:
+  conversation_variables: []
+  environment_variables: []
+  features:
+    file_upload:
+      allowed_file_extensions:
+      - .JPG
+      - .JPEG
+      - .PNG
+      - .GIF
+      - .WEBP
+      - .SVG
+      allowed_file_types:
+      - image
+      allowed_file_upload_methods:
+      - local_file
+      - remote_url
+      enabled: false
+      fileUploadConfig:
+        audio_file_size_limit: 50
+        batch_count_limit: 5
+        file_size_limit: 15
+        image_file_size_limit: 10
+        video_file_size_limit: 100
+        workflow_file_upload_limit: 10
+      image:
+        enabled: false
+        number_limits: 3
+        transfer_methods:
+        - local_file
+        - remote_url
+      number_limits: 3
+    opening_statement: ''
+    retriever_resource:
+      enabled: true
+    sensitive_word_avoidance:
+      enabled: false
+    speech_to_text:
+      enabled: false
+    suggested_questions: []
+    suggested_questions_after_answer:
+      enabled: false
+    text_to_speech:
+      enabled: false
+      language: ''
+      voice: ''
+  graph:
+    edges:
+    - data:
+        isInLoop: false
+        sourceType: llm
+        targetType: llm
+      id: 1754565192779-source-1754562078857-target
+      source: '1754565192779'
+      sourceHandle: source
+      target: '1754562078857'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInLoop: false
+        sourceType: llm
+        targetType: end
+      id: 1754562078857-source-1754562657828-target
+      source: '1754562078857'
+      sourceHandle: source
+      target: '1754562657828'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInLoop: false
+        sourceType: start
+        targetType: llm
+      id: 1754562075156-source-1754874339572-target
+      source: '1754562075156'
+      sourceHandle: source
+      target: '1754874339572'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInLoop: false
+        sourceType: llm
+        targetType: llm
+      id: 1754874339572-source-1754565192779-target
+      source: '1754874339572'
+      sourceHandle: source
+      target: '1754565192779'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    nodes:
+    - data:
+        desc: ''
+        selected: false
+        title: 開始
+        type: start
+        variables:
+        - allowed_file_extensions: []
+          allowed_file_types:
+          - image
+          allowed_file_upload_methods:
+          - local_file
+          label: input_file
+          max_length: 48
+          options: []
+          required: true
+          type: file
+          variable: input_file
+      height: 90
+      id: '1754562075156'
+      position:
+        x: 80
+        y: 282
+      positionAbsolute:
+        x: 80
+        y: 282
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+    - data:
+        context:
+          enabled: false
+          variable_selector: []
+        desc: ''
+        model:
+          completion_params: {}
+          mode: chat
+          name: gemini-2.0-flash
+          provider: langgenius/gemini/google
+        prompt_template:
+        - id: b6257b03-74da-4215-bc0d-f0cefa9a8196
+          role: system
+          text: 'あなたは納品書を分析してUSERの指示に従って出力する優秀なAIアシスタントです。
+
+            '
+        - id: 158d5d4d-e77f-4a7f-81b4-d0f92b14e7da
+          role: user
+          text: '納品書：{{#1754565192779.text#}}
+
+            納品書には下記の情報が書かれています。
+
+            抽出して下さい
+
+
+            ## ページ
+
+            {{#1754874339572.text#}}
+
+
+            ## 出荷日
+
+            「25/07/01」の日付形式で表示されています
+
+
+            ## 受注番号
+
+            御注文No.に書かれた「10」から始まる7桁の数字です。「10」から始まる数字を見つけて下さい。それが御注文番号です。**10から始まる7桁の数字**がどうしても無い場合は「9999999」を出力して下さい。
+
+
+            ## 納入先番号
+
+            「納入先：」と書かれた右にある8桁のアルファベットを含む数字です。
+
+
+            ## 担当者
+
+            納入先の番号の後ろに、人名（姓名の姓）が書かれています。その人名を抽出して下さい。
+
+            但し、**三友工業株式会社**とか**三友工業株式会社東京支店**とか**三友工業（株）**は削除して下さい。又、人名の後につく「様」も不要です。
+
+            「鶴ヶ崎」があれば「鶴ヶ崎」を出力して下さい。
+
+
+            ## 部品番号
+
+            「6桁の英数字-5桁の英数字」もしくは「5桁の英数字-6桁の英数字」の形式で表示されています。
+
+            該当する番号がどうしても無い場合は「999999-99999」を出力して下さい。
+
+            なお、部品番号は1つの御注文番号に複数ある場合があります。その場合の出力方法は例に示します。
+
+
+            ## 部品名
+
+            部品番号に続いて記載されているのが部品名です。ほぼ半角のカタカナで書かれているケースが多いです
+
+
+            ## 運賃
+
+            運賃の記入がある場合は抽出して下さい。
+
+            無い場合は"0"を出力して下さい。
+
+
+            ## 数量,売上単価,売上金額
+
+            この３つの項目はセットです。数量*売上単価=売上金額の関係になっています。
+
+
+            ## 税抜合計
+
+            各項目の列の最後、行の最後に記入されてます。'
+        - id: 0fa2e97b-8d53-43b6-9d8f-a3d0fdb8d909
+          role: assistant
+          text: "## 出力例\n下記の形式で出力して下さい。\n[\n {\n    \"ページ\":\"{{#1754874339572.text#}}\"\
+            ,\n    \"出荷日\":\"25/08/01\",\n    \"受注番号\":\"1234567\",\n    \"納入先番号\"\
+            :\"00000000\",\n    \"担当者\":\"田中\",\n    \"部品番号\":[\"123456-7890\"],\n\
+            \    \"部品名\":[\"パッキン\"],\n    \"運賃\":\"0\",\n    \"数量\":[\"1\"],\n   \
+            \ \"売上単価\":[\"100\"],\n    \"売上金額\":[\"100\"],\n    \"税抜合計\":\"100\"\n\
+            \   },\n   {\n    \"ページ\":\"{{#1754874339572.text#}}\",\n    \"出荷日\":\"\
+            25/08/08\",\n    \"受注番号\":\"9876547\",\n    \"納入先番号\":\"00000001\",\n\
+            \    \"担当者\":\"山本\",\n    \"部品番号\":[\"12345-67890\"],\n    \"部品名\":[\"\
+            ホース\"],\n    \"運賃\":\"500\",\n    \"数量\":[\"10\"],\n    \"売上単価\":[\"500\"\
+            ],\n    \"売上金額\":[\"5000\"],\n    \"税抜合計\":\"5500\"\n   },\n   {\n   \
+            \ \"ページ\":\"{{#1754874339572.text#}}\",\n    \"出荷日\":\"25/01/01\",\n \
+            \   \"受注番号\":\"1212123\",\n    \"納入先番号\":\"00000002\",\n    \"担当者\":\"\
+            山田\",\n    \"部品番号\":[\"12345-67890\",\"98760-54321\",\"111111-22222\"\
+            ],\n    \"部品名\":[\"パッキン\",\"エレメントK\",\"フィルタ\"],\n    \"運賃\":\"0\",\n \
+            \   \"数量\":[\"1\",\"1\",\"8\"],\n    \"売上単価\":[\"500\",\"10\",\"20\"],\n\
+            \    \"売上金額\":[\"500\",\"10\",\"160\"],\n    \"税抜合計\":\"670\"\n   }\n\
+            \  ]"
+        - id: 9a88ed1b-bb5f-42b1-a40b-ee3984dbc90f
+          role: user
+          text: ''
+        - id: 18ca3da0-29b7-432a-8301-91cb3b4ff647
+          role: assistant
+          text: ''
+        selected: false
+        title: 項目抽出
+        type: llm
+        variables: []
+        vision:
+          enabled: false
+      height: 90
+      id: '1754562078857'
+      position:
+        x: 344.58257779446365
+        y: 525.2993830427763
+      positionAbsolute:
+        x: 344.58257779446365
+        y: 525.2993830427763
+      selected: true
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+    - data:
+        desc: ''
+        outputs:
+        - value_selector:
+          - '1754562078857'
+          - text
+          value_type: string
+          variable: text
+        selected: false
+        title: 終了
+        type: end
+      height: 90
+      id: '1754562657828'
+      position:
+        x: 654.1718213558465
+        y: 525.2993830427763
+      positionAbsolute:
+        x: 654.1718213558465
+        y: 525.2993830427763
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+    - data:
+        context:
+          enabled: false
+          variable_selector: []
+        desc: ''
+        model:
+          completion_params: {}
+          mode: chat
+          name: gemini-2.0-flash
+          provider: langgenius/gemini/google
+        prompt_template:
+        - id: 45a0fb69-994d-4220-a645-0312fc3aad7b
+          role: system
+          text: '読み取った納品書は、表形式が壊れている可能性があります。元の表を復元してください。列項目が揃うように成形してください
+
+            '
+        - id: 43706f1d-5806-434b-9302-103202b58570
+          role: user
+          text: 納品書：{{#1754562075156.input_file#}}
+        selected: false
+        title: テキスト変換
+        type: llm
+        variables: []
+        vision:
+          enabled: false
+      height: 90
+      id: '1754565192779'
+      position:
+        x: 349.16778136558304
+        y: 402.20412754784917
+      positionAbsolute:
+        x: 349.16778136558304
+        y: 402.20412754784917
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+    - data:
+        context:
+          enabled: false
+          variable_selector: []
+        desc: ''
+        model:
+          completion_params:
+            temperature: 0.7
+          mode: chat
+          name: gemini-2.5-flash-lite
+          provider: langgenius/gemini/google
+        prompt_template:
+        - id: 0658b811-e2fd-44b0-b639-96c39cfa3a15
+          role: system
+          text: 読み取った納品書の右上端に小さな数字でページ番号が記載されています。その数字を出力してください。
+        - id: a0ef463d-fd93-4a46-b42a-2eb0b64a8096
+          role: user
+          text: '{{#1754562075156.input_file#}}'
+        selected: false
+        title: ページ抽出
+        type: llm
+        variables: []
+        vision:
+          enabled: false
+      height: 90
+      id: '1754874339572'
+      position:
+        x: 349.16778136558304
+        y: 282
+      positionAbsolute:
+        x: 349.16778136558304
+        y: 282
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+    viewport:
+      x: 175.85288482891485
+      y: -0.8974572242938166
+      zoom: 0.9562982000740543
