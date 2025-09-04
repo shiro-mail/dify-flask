@@ -1,4 +1,0 @@
-# ファイル名を .env に変更して使ってください
-DIFY_API_BASE_URL=https://api.dify.ai
-DIFY_API_KEY="app-KvAYTvOk6czEwlGdypbjm6A7"
-DIFY_WORKFLOW_ID="1f977d89-657c-40a1-bf46-98ee9c2e937a"
